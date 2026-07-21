@@ -41,6 +41,13 @@ class _SplashPageState extends State<SplashPage> implements SplashView {
   }
 
   @override
+  void goToHome() {
+    if (!mounted) return;
+    AppLogger.navigation('splash', 'home');
+    context.go('/home');
+  }
+
+  @override
   Widget build(BuildContext context) {
     return BlocProvider.value(
       value: _presenter.cubit as SplashCubit,
@@ -70,20 +77,24 @@ class _SplashPageState extends State<SplashPage> implements SplashView {
                       mainAxisSize: MainAxisSize.min,
                       children: [
                         Container(
-                          width: 80,
-                          height: 80,
+                          width: 96,
+                          height: 96,
                           decoration: BoxDecoration(
-                            color: Colors.white.withValues(alpha: 0.2),
-                            borderRadius: BorderRadius.circular(24),
+                            color: Colors.white.withValues(alpha: 0.12),
+                            borderRadius: BorderRadius.circular(28),
                           ),
-                          child: const Icon(Icons.layers_rounded, size: 40, color: Colors.white),
+                          padding: const EdgeInsets.all(14),
+                          child: Image.asset(
+                            'assets/logo.png',
+                            fit: BoxFit.contain,
+                          ),
                         )
                             .animate()
                             .fadeIn(duration: 500.ms)
                             .scale(begin: const Offset(0.8, 0.8), curve: Curves.easeOutBack),
                         const SizedBox(height: 20),
                         const Text(
-                          'OmniPost',
+                          'SocialSyncc',
                           style: TextStyle(
                             fontSize: 36,
                             fontWeight: FontWeight.w700,

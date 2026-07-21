@@ -2,6 +2,7 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:go_router/go_router.dart';
 
 import '../../../core/theme/app_colors.dart';
 import '../../../core/widgets/platform_icon.dart';
@@ -129,24 +130,39 @@ class _PostsView extends StatelessWidget {
             Expanded(
               child: BlocBuilder<PostsCubit, PostsState>(
                 builder: (context, state) {
-                  if (state.posts.isEmpty) {
-                    return const Center(
-                      child: Text(
-                        'No posts found',
-                        style: TextStyle(color: AppColors.gray400, fontWeight: FontWeight.w500),
-                      ),
-                    );
+                  if (state.loading) {
+                    return const Center(child: CircularProgressIndicator());
                   }
-                  return ListView.separated(
-                    padding: const EdgeInsets.fromLTRB(20, 16, 20, 100),
-                    itemCount: state.posts.length,
-                    separatorBuilder: (_, __) => const SizedBox(height: 10),
-                    itemBuilder: (context, i) {
-                      return _PostListCard(post: state.posts[i])
-                          .animate()
-                          .fadeIn(delay: (40 * i).ms)
-                          .slideY(begin: 0.06, end: 0);
-                    },
+                  return RefreshIndicator(
+                    onRefresh: () => context.read<PostsCubit>().load(refresh: true),
+                    child: state.posts.isEmpty
+                        ? ListView(
+                            physics: const AlwaysScrollableScrollPhysics(),
+                            children: const [
+                              SizedBox(height: 120),
+                              Center(
+                                child: Text(
+                                  'No posts found',
+                                  style: TextStyle(
+                                    color: AppColors.gray400,
+                                    fontWeight: FontWeight.w500,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          )
+                        : ListView.separated(
+                            physics: const AlwaysScrollableScrollPhysics(),
+                            padding: const EdgeInsets.fromLTRB(20, 16, 20, 100),
+                            itemCount: state.posts.length,
+                            separatorBuilder: (_, __) => const SizedBox(height: 10),
+                            itemBuilder: (context, i) {
+                              return _PostListCard(post: state.posts[i])
+                                  .animate()
+                                  .fadeIn(delay: (40 * i).ms)
+                                  .slideY(begin: 0.06, end: 0);
+                            },
+                          ),
                   );
                 },
               ),
@@ -165,7 +181,11 @@ class _PostListCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
+    return GestureDetector(
+      onTap: post.id.isEmpty
+          ? null
+          : () => context.push('/posts/${post.id}'),
+      child: Container(
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
         color: AppColors.white,
@@ -260,6 +280,7 @@ class _PostListCard extends StatelessWidget {
           ),
         ],
       ),
+    ),
     );
   }
 }

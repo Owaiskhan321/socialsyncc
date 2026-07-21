@@ -1,6 +1,6 @@
 import 'package:equatable/equatable.dart';
 
-enum PostStatus { draft, scheduled, published, failed, cancelled }
+enum PostStatus { draft, scheduled, publishing, published, failed, cancelled }
 
 class PlatformModel extends Equatable {
   const PlatformModel({
@@ -28,6 +28,7 @@ class PostModel extends Equatable {
     required this.status,
     this.publishAt,
     this.thumbnail,
+    this.scheduledDate,
   });
 
   final String id;
@@ -37,9 +38,11 @@ class PostModel extends Equatable {
   final PostStatus status;
   final String? publishAt;
   final String? thumbnail;
+  final DateTime? scheduledDate;
 
   @override
-  List<Object?> get props => [id, title, caption, platforms, status, publishAt, thumbnail];
+  List<Object?> get props =>
+      [id, title, caption, platforms, status, publishAt, thumbnail, scheduledDate];
 }
 
 class NotificationModel extends Equatable {

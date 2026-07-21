@@ -5,7 +5,9 @@ abstract final class AppData {
   static const platforms = <PlatformModel>[
     PlatformModel(id: 'facebook', name: 'Facebook', color: 0xFF1877F2, accounts: ['Company Page', 'Brand Page', 'Personal Profile']),
     PlatformModel(id: 'instagram', name: 'Instagram', color: 0xFFE1306C, accounts: ['Brand Account', 'Product Account']),
-    PlatformModel(id: 'linkedin', name: 'LinkedIn', color: 0xFF0A66C2, accounts: ['Official Page', 'Showcase Page']),
+    PlatformModel(id: 'threads', name: 'Threads', color: 0xFF000000, accounts: ['Main Profile']),
+    PlatformModel(id: 'linkedin', name: 'LinkedIn', color: 0xFF0A66C2, accounts: ['Personal Profile']),
+    // PlatformModel(id: 'linkedin_organization', name: 'LinkedIn Organization', color: 0xFFD4AF37, accounts: ['Company Page']),
     PlatformModel(id: 'tiktok', name: 'TikTok', color: 0xFF010101, accounts: ['Main Account']),
     PlatformModel(id: 'x', name: 'X (Twitter)', color: 0xFF000000, accounts: ['Main Profile', 'Support Handle']),
     PlatformModel(id: 'pinterest', name: 'Pinterest', color: 0xFFE60023, accounts: ['Brand Board']),
@@ -16,13 +18,25 @@ abstract final class AppData {
   static const initials = <String, String>{
     'facebook': 'f',
     'instagram': 'ig',
+    'threads': '@',
     'linkedin': 'in',
+    // 'linkedin_organization': 'in',
     'tiktok': 'tt',
     'x': 'X',
     'pinterest': 'P',
     'youtube': '▶',
     'google': 'G',
   };
+
+  static String platformName(String id) {
+    final key = id.toLowerCase();
+    for (final p in platforms) {
+      if (p.id == key) return p.name;
+    }
+    if (key == 'linkedin_organization') return 'LinkedIn Organization';
+    if (key.isEmpty) return id;
+    return '${key[0].toUpperCase()}${key.substring(1)}';
+  }
 
   static const posts = <PostModel>[
     PostModel(
@@ -54,7 +68,7 @@ abstract final class AppData {
     PostModel(
       id: '4',
       title: 'Customer Success Story',
-      caption: 'How Acme Corp increased their social engagement by 340% using OmniPost.',
+      caption: 'How Acme Corp increased their social engagement by 340% using SocialSyncc.',
       platforms: ['linkedin', 'x'],
       status: PostStatus.failed,
       publishAt: 'Jan 12 · 9:00 AM',

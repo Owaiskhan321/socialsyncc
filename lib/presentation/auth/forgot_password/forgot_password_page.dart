@@ -42,10 +42,12 @@ class _ForgotPasswordPageState extends State<ForgotPasswordPage>
   }
 
   @override
-  void goOtpVerify() {
+  void goOtpVerify(String email) {
     if (!mounted) return;
     AppLogger.navigation('forgot-password', 'otp-verify');
-    context.push('/otp-verify');
+    context.push(
+      '/otp-verify?email=${Uri.encodeComponent(email)}&purpose=reset',
+    );
   }
 
   @override
@@ -96,7 +98,7 @@ class _ForgotPasswordPageState extends State<ForgotPasswordPage>
                 ),
                 const SizedBox(height: 10),
                 const Text(
-                  "No worries — enter your email and we'll send you a reset link to get back into your account.",
+                  "No worries — enter your email and we'll send you a 6-digit code to reset your password.",
                   style: TextStyle(
                     fontSize: 15,
                     color: AppColors.gray500,
@@ -113,9 +115,20 @@ class _ForgotPasswordPageState extends State<ForgotPasswordPage>
                   onChanged: _presenter.onEmailChanged,
                 ),
                 const SizedBox(height: 28),
-                AppButton(
-                  label: 'Send Reset Link',
-                  onPressed: _presenter.sendResetLink,
+                BlocBuilder<ForgotPasswordCubit, ForgotPasswordState>(
+                  buildWhen: (a, b) => a.loading != b.loading,
+                  builder: (context, state) {
+                    return AppButton(
+                      label: state.loading ? 'Sending…' : 'Send Reset Code',
+                      loading: state.loading,
+                      onPressed: state.loading
+                          ? null
+                          : () {
+                              KeyboardDismiss.hide(context);
+                              _presenter.sendResetLink();
+                            },
+                    );
+                  },
                 ),
                 const SizedBox(height: 28),
                 Center(

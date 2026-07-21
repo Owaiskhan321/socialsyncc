@@ -23,10 +23,18 @@ class ApiResponse {
 
   factory ApiResponse.fromJson(Map<String, dynamic> json, {int? statusCode}) {
     final bool success;
+    final status = (json['status'] ?? '').toString().toLowerCase();
     if (json.containsKey('success')) {
       success = json['success'] == true;
-    } else if (json['status'] == 'success' || json['status'] == 'ok') {
+    } else if (status == 'success' ||
+        status == 'ok' ||
+        status == 'processing' ||
+        status == 'queued' ||
+        status == 'pending') {
       success = true;
+    } else if (json['postId'] != null || json['id'] != null) {
+      // Create-post style payloads often omit `success`.
+      success = statusCode != null && statusCode >= 200 && statusCode < 300;
     } else {
       success = statusCode != null && statusCode >= 200 && statusCode < 300;
     }

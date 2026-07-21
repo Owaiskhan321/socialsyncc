@@ -1,35 +1,105 @@
+import 'dart:async';
+
 import 'package:equatable/equatable.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
+import '../../../core/events/posts_refresh_bus.dart';
 import '../../../core/logger/app_logger.dart';
+import '../../../core/network/api_exception.dart';
 import '../../../data/models/models.dart';
-import '../../../data/repositories/app_data.dart';
+import '../../../data/repositories/posts_repository.dart';
+import '../../../data/services/live_data_helpers.dart';
 
 class CalendarState extends Equatable {
-  const CalendarState({
-    this.year = 2024,
-    this.month = 1,
-    this.selectedDay = 20,
-  });
+  CalendarState({
+    int? year,
+    int? month,
+    int? selectedDay,
+    this.posts = const [],
+    this.loading = false,
+    this.error,
+  })  : year = year ?? DateTime.now().year,
+        month = month ?? DateTime.now().month,
+        selectedDay = selectedDay ?? DateTime.now().day;
 
   final int year;
   final int month;
   final int selectedDay;
+  final List<PostModel> posts;
+  final bool loading;
+  final String? error;
 
-  List<CalEvent> get selectedEvents => AppData.calEvents[selectedDay] ?? const [];
+  Map<int, List<CalEvent>> get eventsByDay => calendarEventsForMonth(
+        posts: posts,
+        year: year,
+        month: month,
+      );
 
-  CalendarState copyWith({int? year, int? month, int? selectedDay}) => CalendarState(
+  List<CalEvent> get selectedEvents => eventsByDay[selectedDay] ?? const [];
+
+  CalendarState copyWith({
+    int? year,
+    int? month,
+    int? selectedDay,
+    List<PostModel>? posts,
+    bool? loading,
+    String? error,
+    bool clearError = false,
+  }) =>
+      CalendarState(
         year: year ?? this.year,
         month: month ?? this.month,
         selectedDay: selectedDay ?? this.selectedDay,
+        posts: posts ?? this.posts,
+        loading: loading ?? this.loading,
+        error: clearError ? null : (error ?? this.error),
       );
 
   @override
-  List<Object?> get props => [year, month, selectedDay];
+  List<Object?> get props => [year, month, selectedDay, posts, loading, error];
 }
 
 class CalendarCubit extends Cubit<CalendarState> {
-  CalendarCubit() : super(const CalendarState());
+  CalendarCubit({PostsRepository? repository})
+      : _repo = repository ?? PostsRepository(),
+        super(CalendarState()) {
+    load();
+    _refreshSub =
+        PostsRefreshBus.instance.stream.listen((_) => refreshSilently());
+  }
+
+  final PostsRepository _repo;
+  StreamSubscription<void>? _refreshSub;
+
+  @override
+  Future<void> close() {
+    _refreshSub?.cancel();
+    return super.close();
+  }
+
+  Future<void> load() async {
+    emit(state.copyWith(loading: true, clearError: true));
+    try {
+      final posts = await _repo.fetchPosts();
+      emit(state.copyWith(posts: posts, loading: false));
+    } on ApiException catch (e) {
+      AppLogger.w('Calendar posts failed', e);
+      emit(state.copyWith(loading: false, error: e.message, posts: const []));
+    } catch (e, st) {
+      AppLogger.e('Calendar load failed', e, st);
+      emit(state.copyWith(loading: false, error: 'Could not load calendar.', posts: const []));
+    }
+  }
+
+  Future<void> refreshSilently() async {
+    try {
+      final posts = await _repo.fetchPosts();
+      if (isClosed) return;
+      emit(state.copyWith(posts: posts));
+    } catch (e) {
+      AppLogger.d('Calendar silent refresh: $e');
+    }
+  }
 
   void selectDay(int day) {
     AppLogger.event('calendar_select', {'day': day});

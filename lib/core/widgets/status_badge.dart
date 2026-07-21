@@ -13,6 +13,7 @@ class StatusBadge extends StatelessWidget {
     final (label, bg, fg) = switch (status) {
       PostStatus.draft => ('Draft', AppColors.gray100, AppColors.gray500),
       PostStatus.scheduled => ('Scheduled', AppColors.blue50, AppColors.primary),
+      PostStatus.publishing => ('Publishing', AppColors.blue50, AppColors.primary),
       PostStatus.published => ('Published', AppColors.green50, AppColors.success),
       PostStatus.failed => ('Failed', AppColors.red50, AppColors.danger),
       PostStatus.cancelled => ('Cancelled', AppColors.gray100, AppColors.gray400),

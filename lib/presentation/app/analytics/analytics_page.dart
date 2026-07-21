@@ -1,20 +1,28 @@
 import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
+import 'package:flutter_bloc/flutter_bloc.dart';
 
 import '../../../core/logger/app_logger.dart';
 import '../../../core/theme/app_colors.dart';
-import '../../../data/repositories/app_data.dart';
+import '../../../data/models/models.dart';
+import '../../../data/services/live_data_helpers.dart';
+import 'analytics_cubit.dart';
 
-class AnalyticsPage extends StatefulWidget {
+class AnalyticsPage extends StatelessWidget {
   const AnalyticsPage({super.key});
 
   @override
-  State<AnalyticsPage> createState() => _AnalyticsPageState();
+  Widget build(BuildContext context) {
+    return BlocProvider(
+      create: (_) => AnalyticsCubit(),
+      child: const _AnalyticsView(),
+    );
+  }
 }
 
-class _AnalyticsPageState extends State<AnalyticsPage> {
-  int _range = 1; // 0=7d, 1=30d, 2=90d
+class _AnalyticsView extends StatelessWidget {
+  const _AnalyticsView();
 
   @override
   Widget build(BuildContext context) {
@@ -31,53 +39,82 @@ class _AnalyticsPageState extends State<AnalyticsPage> {
                 color: AppColors.white,
                 border: Border(bottom: BorderSide(color: AppColors.gray100)),
               ),
-              child: Row(
-                children: [
-                  const Expanded(
-                    child: Text(
-                      'Analytics',
-                      style: TextStyle(
-                        fontSize: 22,
-                        fontWeight: FontWeight.w700,
-                        color: AppColors.gray900,
-                        letterSpacing: -0.3,
+              child: BlocBuilder<AnalyticsCubit, AnalyticsState>(
+                buildWhen: (a, b) => a.rangeIndex != b.rangeIndex,
+                builder: (context, state) {
+                  return Row(
+                    children: [
+                      const Expanded(
+                        child: Text(
+                          'Analytics',
+                          style: TextStyle(
+                            fontSize: 22,
+                            fontWeight: FontWeight.w700,
+                            color: AppColors.gray900,
+                            letterSpacing: -0.3,
+                          ),
+                        ),
                       ),
-                    ),
-                  ),
-                  _RangePicker(
-                    selected: _range,
-                    onChanged: (i) {
-                      AppLogger.event('analytics_range', {'index': i});
-                      setState(() => _range = i);
-                    },
-                  ),
-                ],
+                      _RangePicker(
+                        selected: state.rangeIndex,
+                        onChanged: context.read<AnalyticsCubit>().setRange,
+                      ),
+                    ],
+                  );
+                },
               ),
             ),
             Expanded(
-              child: ListView(
-                padding: const EdgeInsets.fromLTRB(20, 16, 20, 100),
-                children: [
-                  _StatRow().animate().fadeIn(duration: 280.ms),
-                  const SizedBox(height: 16),
-                  _ChartCard(
-                    title: 'Publishing Trend',
-                    subtitle: 'Published vs failed',
-                    child: SizedBox(height: 200, child: _TrendChart()),
-                  ).animate().fadeIn(delay: 80.ms),
-                  const SizedBox(height: 16),
-                  _ChartCard(
-                    title: 'Platform Mix',
-                    subtitle: 'Share of posts by network',
-                    child: SizedBox(height: 200, child: _PieChart()),
-                  ).animate().fadeIn(delay: 140.ms),
-                  const SizedBox(height: 16),
-                  _ChartCard(
-                    title: 'Posting Frequency',
-                    subtitle: 'Average posts per weekday',
-                    child: SizedBox(height: 200, child: _BarChart()),
-                  ).animate().fadeIn(delay: 200.ms),
-                ],
+              child: BlocBuilder<AnalyticsCubit, AnalyticsState>(
+                builder: (context, state) {
+                  if (state.loading) {
+                    return const Center(child: CircularProgressIndicator());
+                  }
+                  final a = state.analytics;
+                  return RefreshIndicator(
+                    onRefresh: () => context.read<AnalyticsCubit>().load(),
+                    child: ListView(
+                      physics: const AlwaysScrollableScrollPhysics(),
+                      padding: const EdgeInsets.fromLTRB(20, 16, 20, 100),
+                      children: [
+                        if (state.error != null)
+                          Padding(
+                            padding: const EdgeInsets.only(bottom: 8),
+                            child: Text(state.error!, style: const TextStyle(color: AppColors.danger)),
+                          ),
+                        _StatRow(analytics: a).animate().fadeIn(duration: 280.ms),
+                        const SizedBox(height: 16),
+                        _ChartCard(
+                          title: 'Publishing Trend',
+                          subtitle: 'Published vs failed',
+                          child: SizedBox(height: 200, child: _TrendChart(data: a.trend)),
+                        ).animate().fadeIn(delay: 80.ms),
+                        const SizedBox(height: 16),
+                        _ChartCard(
+                          title: 'Platform Mix',
+                          subtitle: 'Share of posts by network',
+                          child: SizedBox(height: 200, child: _PieChart(data: a.pie)),
+                        ).animate().fadeIn(delay: 140.ms),
+                        const SizedBox(height: 16),
+                        _ChartCard(
+                          title: 'Posting Frequency',
+                          subtitle: 'Posts per weekday',
+                          child: SizedBox(height: 200, child: _BarChart(data: a.freq)),
+                        ).animate().fadeIn(delay: 200.ms),
+                        if (a.timezone != null) ...[
+                          const SizedBox(height: 8),
+                          Text(
+                            'Timezone: ${a.timezone}',
+                            style: const TextStyle(
+                              fontSize: 11,
+                              color: AppColors.gray400,
+                            ),
+                          ),
+                        ],
+                      ],
+                    ),
+                  );
+                },
               ),
             ),
           ],
@@ -106,7 +143,10 @@ class _RangePicker extends StatelessWidget {
         children: List.generate(3, (i) {
           final on = selected == i;
           return GestureDetector(
-            onTap: () => onChanged(i),
+            onTap: () {
+              AppLogger.event('analytics_range', {'index': i});
+              onChanged(i);
+            },
             child: AnimatedContainer(
               duration: const Duration(milliseconds: 160),
               padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
@@ -140,27 +180,81 @@ class _RangePicker extends StatelessWidget {
 }
 
 class _StatRow extends StatelessWidget {
+  const _StatRow({required this.analytics});
+
+  final LiveAnalytics analytics;
+
   @override
   Widget build(BuildContext context) {
-    const stats = [
-      ('Published', '128', AppColors.success, AppColors.green50),
-      ('Engagement', '4.2k', AppColors.primary, AppColors.blue50),
-      ('Failed', '6', AppColors.danger, AppColors.red50),
+    final change = analytics.totalPostsChangePercent;
+    final changeLabel = change == 0
+        ? null
+        : change > 0
+            ? '+$change%'
+            : '$change%';
+
+    final stats = [
+      (
+        'Total',
+        '${analytics.totalPosts}',
+        AppColors.gray800,
+        AppColors.gray100,
+        changeLabel,
+      ),
+      (
+        'Published',
+        '${analytics.published}',
+        AppColors.success,
+        AppColors.green50,
+        analytics.publishedPercent > 0 ? '${analytics.publishedPercent}%' : null,
+      ),
+      (
+        'Scheduled',
+        '${analytics.scheduled}',
+        AppColors.primary,
+        AppColors.blue50,
+        null,
+      ),
+      (
+        'Failed',
+        '${analytics.failed}',
+        AppColors.danger,
+        AppColors.red50,
+        null,
+      ),
     ];
-    return Row(
-      children: stats.map((s) {
-        return Expanded(
-          child: Padding(
-            padding: EdgeInsets.only(right: s == stats.last ? 0 : 8),
-            child: Container(
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: AppColors.white,
-                borderRadius: BorderRadius.circular(14),
-                border: Border.all(color: AppColors.gray100),
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
+
+    return Column(
+      children: [
+        Row(
+          children: stats.take(2).map((s) => _statCard(s, isLast: s == stats[1])).toList(),
+        ),
+        const SizedBox(height: 8),
+        Row(
+          children: stats.skip(2).map((s) => _statCard(s, isLast: s == stats.last)).toList(),
+        ),
+      ],
+    );
+  }
+
+  Widget _statCard(
+    (String, String, Color, Color, String?) s, {
+    required bool isLast,
+  }) {
+    return Expanded(
+      child: Padding(
+        padding: EdgeInsets.only(right: isLast ? 0 : 8),
+        child: Container(
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            color: AppColors.white,
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(color: AppColors.gray100),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
                 children: [
                   Container(
                     width: 28,
@@ -171,25 +265,40 @@ class _StatRow extends StatelessWidget {
                     ),
                     child: Icon(Icons.trending_up, size: 14, color: s.$3),
                   ),
-                  const SizedBox(height: 10),
-                  Text(
-                    s.$2,
-                    style: const TextStyle(
-                      fontSize: 18,
-                      fontWeight: FontWeight.w700,
-                      color: AppColors.gray900,
+                  if (s.$5 != null) ...[
+                    const Spacer(),
+                    Text(
+                      s.$5!,
+                      style: TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w700,
+                        color: s.$3,
+                      ),
                     ),
-                  ),
-                  Text(
-                    s.$1,
-                    style: const TextStyle(fontSize: 11, color: AppColors.gray500, fontWeight: FontWeight.w500),
-                  ),
+                  ],
                 ],
               ),
-            ),
+              const SizedBox(height: 10),
+              Text(
+                s.$2,
+                style: const TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.w700,
+                  color: AppColors.gray900,
+                ),
+              ),
+              Text(
+                s.$1,
+                style: const TextStyle(
+                  fontSize: 11,
+                  color: AppColors.gray500,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+            ],
           ),
-        );
-      }).toList(),
+        ),
+      ),
     );
   }
 }
@@ -228,9 +337,15 @@ class _ChartCard extends StatelessWidget {
 }
 
 class _TrendChart extends StatelessWidget {
+  const _TrendChart({required this.data});
+
+  final List<TrendPoint> data;
+
   @override
   Widget build(BuildContext context) {
-    final data = AppData.analyticsTrend;
+    if (data.isEmpty) {
+      return const Center(child: Text('No data yet', style: TextStyle(color: AppColors.gray400)));
+    }
     return LineChart(
       LineChartData(
         minY: 0,
@@ -263,7 +378,7 @@ class _TrendChart extends StatelessWidget {
                 return Padding(
                   padding: const EdgeInsets.only(top: 6),
                   child: Text(
-                    data[i].date.replaceFirst('Jan ', ''),
+                    data[i].date,
                     style: const TextStyle(fontSize: 10, color: AppColors.gray400),
                   ),
                 );
@@ -273,9 +388,7 @@ class _TrendChart extends StatelessWidget {
         ),
         lineBarsData: [
           LineChartBarData(
-            spots: [
-              for (var i = 0; i < data.length; i++) FlSpot(i.toDouble(), data[i].pub),
-            ],
+            spots: [for (var i = 0; i < data.length; i++) FlSpot(i.toDouble(), data[i].pub)],
             isCurved: true,
             color: AppColors.primary,
             barWidth: 3,
@@ -286,9 +399,7 @@ class _TrendChart extends StatelessWidget {
             ),
           ),
           LineChartBarData(
-            spots: [
-              for (var i = 0; i < data.length; i++) FlSpot(i.toDouble(), data[i].fail),
-            ],
+            spots: [for (var i = 0; i < data.length; i++) FlSpot(i.toDouble(), data[i].fail)],
             isCurved: true,
             color: AppColors.danger,
             barWidth: 2,
@@ -301,9 +412,15 @@ class _TrendChart extends StatelessWidget {
 }
 
 class _PieChart extends StatelessWidget {
+  const _PieChart({required this.data});
+
+  final List<PieSlice> data;
+
   @override
   Widget build(BuildContext context) {
-    final data = AppData.platformPie;
+    if (data.isEmpty) {
+      return const Center(child: Text('No platform data yet', style: TextStyle(color: AppColors.gray400)));
+    }
     final total = data.fold<double>(0, (s, e) => s + e.value);
     return Row(
       children: [
@@ -330,7 +447,7 @@ class _PieChart extends StatelessWidget {
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: data.map((s) {
-              final pct = ((s.value / total) * 100).round();
+              final pct = total == 0 ? 0 : ((s.value / total) * 100).round();
               return Padding(
                 padding: const EdgeInsets.only(bottom: 8),
                 child: Row(
@@ -338,21 +455,26 @@ class _PieChart extends StatelessWidget {
                     Container(
                       width: 8,
                       height: 8,
-                      decoration: BoxDecoration(
-                        color: Color(s.color),
-                        shape: BoxShape.circle,
-                      ),
+                      decoration: BoxDecoration(color: Color(s.color), shape: BoxShape.circle),
                     ),
                     const SizedBox(width: 8),
                     Expanded(
                       child: Text(
                         s.name,
-                        style: const TextStyle(fontSize: 12, color: AppColors.gray700, fontWeight: FontWeight.w500),
+                        style: const TextStyle(
+                          fontSize: 12,
+                          color: AppColors.gray700,
+                          fontWeight: FontWeight.w500,
+                        ),
                       ),
                     ),
                     Text(
                       '$pct%',
-                      style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: AppColors.gray900),
+                      style: const TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w700,
+                        color: AppColors.gray900,
+                      ),
                     ),
                   ],
                 ),
@@ -366,12 +488,19 @@ class _PieChart extends StatelessWidget {
 }
 
 class _BarChart extends StatelessWidget {
+  const _BarChart({required this.data});
+
+  final List<FreqPoint> data;
+
   @override
   Widget build(BuildContext context) {
-    final data = AppData.analyticsFreq;
+    if (data.isEmpty) {
+      return const Center(child: Text('No data yet', style: TextStyle(color: AppColors.gray400)));
+    }
+    final maxY = data.map((e) => e.v).fold<double>(1, (a, b) => a > b ? a : b);
     return BarChart(
       BarChartData(
-        maxY: 12,
+        maxY: maxY < 4 ? 4 : maxY + 1,
         gridData: FlGridData(
           show: true,
           drawVerticalLine: false,
@@ -392,7 +521,11 @@ class _BarChart extends StatelessWidget {
                   padding: const EdgeInsets.only(top: 6),
                   child: Text(
                     data[i].day,
-                    style: const TextStyle(fontSize: 10, color: AppColors.gray400, fontWeight: FontWeight.w600),
+                    style: const TextStyle(
+                      fontSize: 10,
+                      color: AppColors.gray400,
+                      fontWeight: FontWeight.w600,
+                    ),
                   ),
                 );
               },

@@ -23,6 +23,7 @@ class _RegisterPageState extends State<RegisterPage> implements RegisterView {
   final _emailCtrl = TextEditingController();
   final _phoneCtrl = TextEditingController();
   final _passwordCtrl = TextEditingController();
+  final _confirmCtrl = TextEditingController();
 
   @override
   void initState() {
@@ -37,6 +38,7 @@ class _RegisterPageState extends State<RegisterPage> implements RegisterView {
     _emailCtrl.dispose();
     _phoneCtrl.dispose();
     _passwordCtrl.dispose();
+    _confirmCtrl.dispose();
     _presenter.dispose();
     super.dispose();
   }
@@ -48,13 +50,15 @@ class _RegisterPageState extends State<RegisterPage> implements RegisterView {
   }
 
   @override
-  void onRegisterSuccess(String message) {
+  void onRegisterSuccess(String message, String email) {
     if (!mounted) return;
     AppSnackBar.success(context, message);
-    AppLogger.navigation('register', 'login');
-    Future.delayed(const Duration(milliseconds: 600), () {
+    AppLogger.navigation('register', 'otp-verify');
+    Future.delayed(const Duration(milliseconds: 500), () {
       if (!mounted) return;
-      context.go('/login');
+      context.push(
+        '/otp-verify?email=${Uri.encodeComponent(email)}&purpose=verify',
+      );
     });
   }
 
@@ -96,7 +100,7 @@ class _RegisterPageState extends State<RegisterPage> implements RegisterView {
                   ),
                   const SizedBox(height: 8),
                   const Text(
-                    'Join 5,000+ brands on OmniPost',
+                    'Join 5,000+ brands on SocialSyncc',
                     style: TextStyle(
                       fontSize: 15,
                       color: AppColors.gray500,
@@ -145,6 +149,44 @@ class _RegisterPageState extends State<RegisterPage> implements RegisterView {
                           ),
                           const SizedBox(height: 12),
                           _PasswordStrengthBars(strength: state.strength),
+                          const SizedBox(height: 16),
+                          AppInput(
+                            controller: _confirmCtrl,
+                            icon: Icons.lock_outline_rounded,
+                            label: 'Confirm password',
+                            hint: 'Re-enter your password',
+                            obscure: state.obscureConfirm,
+                            onChanged: _presenter.onConfirmPasswordChanged,
+                          ),
+                          if (state.confirmPassword.isNotEmpty) ...[
+                            const SizedBox(height: 8),
+                            Row(
+                              children: [
+                                Icon(
+                                  state.passwordsMatch
+                                      ? Icons.check_circle_rounded
+                                      : Icons.cancel_rounded,
+                                  size: 16,
+                                  color: state.passwordsMatch
+                                      ? AppColors.success
+                                      : AppColors.danger,
+                                ),
+                                const SizedBox(width: 6),
+                                Text(
+                                  state.passwordsMatch
+                                      ? 'Passwords match'
+                                      : "Passwords don't match",
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.w500,
+                                    color: state.passwordsMatch
+                                        ? AppColors.success
+                                        : AppColors.danger,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ],
                         ],
                       );
                     },
@@ -222,10 +264,12 @@ class _RegisterPageState extends State<RegisterPage> implements RegisterView {
                       return AppButton(
                         label: 'Create Account',
                         loading: state.loading,
-                        onPressed: () {
-                          KeyboardDismiss.hide(context);
-                          _presenter.createAccount();
-                        },
+                        onPressed: state.loading
+                            ? null
+                            : () {
+                                KeyboardDismiss.hide(context);
+                                _presenter.createAccount();
+                              },
                       );
                     },
                   ),

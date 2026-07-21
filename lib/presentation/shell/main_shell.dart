@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../core/realtime/pusher_service.dart';
 import '../../core/logger/app_logger.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/utils/keyboard_dismiss.dart';
@@ -12,8 +13,19 @@ import '../app/home/home_page.dart';
 import '../app/posts/posts_page.dart';
 import 'tab_cubit.dart';
 
-class MainShell extends StatelessWidget {
+class MainShell extends StatefulWidget {
   const MainShell({super.key});
+
+  @override
+  State<MainShell> createState() => _MainShellState();
+}
+
+class _MainShellState extends State<MainShell> {
+  @override
+  void initState() {
+    super.initState();
+    PusherRealtimeService().connectIfLoggedIn();
+  }
 
   @override
   Widget build(BuildContext context) {

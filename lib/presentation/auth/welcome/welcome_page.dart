@@ -57,18 +57,18 @@ class WelcomePage extends StatelessWidget {
                     children: [
                       Row(
                         children: [
-                          Container(
-                            width: 28,
-                            height: 28,
-                            decoration: BoxDecoration(
-                              color: AppColors.primary,
-                              borderRadius: BorderRadius.circular(8),
+                          ClipRRect(
+                            borderRadius: BorderRadius.circular(8),
+                            child: Image.asset(
+                              'assets/logo.png',
+                              width: 28,
+                              height: 28,
+                              fit: BoxFit.cover,
                             ),
-                            child: const Icon(Icons.layers_rounded, size: 14, color: Colors.white),
                           ),
                           const SizedBox(width: 8),
                           const Text(
-                            'OmniPost',
+                            'SocialSyncc',
                             style: TextStyle(
                               fontSize: 18,
                               fontWeight: FontWeight.w700,
@@ -108,7 +108,7 @@ class WelcomePage extends StatelessWidget {
                       const SizedBox(height: 24),
                       Wrap(
                         spacing: 12,
-                        children: ['5,000+ brands', '8 platforms', 'Trusted globally']
+                        children: ['5,000+ brands', '9 platforms', 'Trusted globally']
                             .map(
                               (t) => Row(
                                 mainAxisSize: MainAxisSize.min,

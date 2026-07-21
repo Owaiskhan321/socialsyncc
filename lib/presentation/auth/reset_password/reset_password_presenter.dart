@@ -3,6 +3,8 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 
 import '../../../core/logger/app_logger.dart';
 import '../../../core/mvp/mvp_base.dart';
+import '../../../core/network/api_exception.dart';
+import '../../../data/repositories/auth_repository.dart';
 
 class ResetPasswordState extends Equatable {
   const ResetPasswordState({
@@ -11,6 +13,8 @@ class ResetPasswordState extends Equatable {
     this.obscurePassword = true,
     this.obscureConfirm = true,
     this.loading = false,
+    this.email = '',
+    this.otp = '',
   });
 
   final String password;
@@ -18,6 +22,8 @@ class ResetPasswordState extends Equatable {
   final bool obscurePassword;
   final bool obscureConfirm;
   final bool loading;
+  final String email;
+  final String otp;
 
   bool get hasConfirmInput => confirmPassword.isNotEmpty;
   bool get passwordsMatch =>
@@ -29,6 +35,8 @@ class ResetPasswordState extends Equatable {
     bool? obscurePassword,
     bool? obscureConfirm,
     bool? loading,
+    String? email,
+    String? otp,
   }) {
     return ResetPasswordState(
       password: password ?? this.password,
@@ -36,12 +44,21 @@ class ResetPasswordState extends Equatable {
       obscurePassword: obscurePassword ?? this.obscurePassword,
       obscureConfirm: obscureConfirm ?? this.obscureConfirm,
       loading: loading ?? this.loading,
+      email: email ?? this.email,
+      otp: otp ?? this.otp,
     );
   }
 
   @override
-  List<Object?> get props =>
-      [password, confirmPassword, obscurePassword, obscureConfirm, loading];
+  List<Object?> get props => [
+        password,
+        confirmPassword,
+        obscurePassword,
+        obscureConfirm,
+        loading,
+        email,
+        otp,
+      ];
 }
 
 abstract class ResetPasswordView implements MvpView {
@@ -49,7 +66,8 @@ abstract class ResetPasswordView implements MvpView {
 }
 
 class ResetPasswordCubit extends Cubit<ResetPasswordState> {
-  ResetPasswordCubit() : super(const ResetPasswordState());
+  ResetPasswordCubit({String email = '', String otp = ''})
+      : super(ResetPasswordState(email: email, otp: otp));
 
   void setPassword(String v) => emit(state.copyWith(password: v));
   void setConfirmPassword(String v) => emit(state.copyWith(confirmPassword: v));
@@ -62,8 +80,14 @@ class ResetPasswordCubit extends Cubit<ResetPasswordState> {
 
 class ResetPasswordPresenter
     extends MvpPresenter<ResetPasswordState, ResetPasswordView> {
-  ResetPasswordPresenter() : super(ResetPasswordCubit());
+  ResetPasswordPresenter({
+    required String email,
+    required String otp,
+    AuthRepository? repository,
+  })  : _repo = repository ?? AuthRepository(),
+        super(ResetPasswordCubit(email: email, otp: otp));
 
+  final AuthRepository _repo;
   ResetPasswordCubit get _c => cubit as ResetPasswordCubit;
 
   void onPasswordChanged(String v) => _c.setPassword(v);
@@ -79,12 +103,44 @@ class ResetPasswordPresenter
     _c.toggleObscureConfirm();
   }
 
-  void resetPassword() {
+  Future<void> resetPassword() async {
+    if (state.password.trim().length < 6) {
+      view?.showMessage('Password must be at least 6 characters');
+      return;
+    }
     if (!state.passwordsMatch) {
       view?.showMessage("Passwords don't match");
       return;
     }
-    AppLogger.event('reset_password_submit');
-    view?.goAuthSuccess();
+    if (state.email.isEmpty || state.otp.isEmpty) {
+      view?.showMessage('Reset session expired. Please start again.');
+      return;
+    }
+    if (state.loading) return;
+
+    _c.setLoading(true);
+    AppLogger.event('reset_password_submit', {'email': state.email});
+
+    try {
+      // POST /auth/reset-password { email, otp, newPassword }
+      final result = await _repo.resetPassword(
+        email: state.email,
+        otp: state.otp,
+        newPassword: state.password.trim(),
+      );
+      view?.showMessage(
+        result.message.isNotEmpty
+            ? result.message
+            : 'Password reset successfully',
+      );
+      view?.goAuthSuccess();
+    } on ApiException catch (e) {
+      view?.showMessage(e.message);
+    } catch (e, st) {
+      AppLogger.e('Reset password failed', e, st);
+      view?.showMessage('Could not reset password. Please try again.');
+    } finally {
+      if (!cubit.isClosed) _c.setLoading(false);
+    }
   }
 }

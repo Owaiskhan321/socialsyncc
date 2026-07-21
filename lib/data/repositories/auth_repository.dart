@@ -50,6 +50,38 @@ class AuthRepository {
     );
   }
 
+  Future<AuthResult> socialLogin(SocialLoginRequest request) async {
+    AppLogger.event('api_social_login', {'provider': request.provider});
+    final res = await _client.post(
+      ApiConstants.socialLogin,
+      body: request.toJson(),
+    );
+
+    final token = _readToken(res.data);
+    final email = _readString(res.data, const ['email', 'user.email']);
+    final name = _readString(res.data, const ['name', 'fullName', 'user.name']);
+    final userId = _readString(res.data, const ['id', 'userId', 'user.id', 'uuid']);
+
+    if (token != null && token.isNotEmpty) {
+      _client.setToken(token);
+      await SessionStorage.saveSession(
+        token: token,
+        email: email,
+        name: name,
+        userId: userId,
+      );
+    }
+
+    return AuthResult(
+      message: res.message.isNotEmpty
+          ? res.message
+          : 'Signed in with ${request.provider}',
+      token: token,
+      email: email,
+      name: name,
+    );
+  }
+
   Future<AuthResult> verifyEmail({required String email, required String otp}) async {
     final res = await _client.post(
       ApiConstants.verifyEmail,
@@ -58,19 +90,41 @@ class AuthRepository {
     return AuthResult(message: res.message, email: email);
   }
 
+  /// Step 1 — send OTP to email for password reset.
+  Future<AuthResult> forgotPassword({required String email}) async {
+    AppLogger.event('api_forgot_password', {'email': email});
+    final res = await _client.post(
+      ApiConstants.forgotPassword,
+      body: {'email': email},
+    );
+    return AuthResult(
+      message: res.message.isNotEmpty
+          ? res.message
+          : 'Reset code sent to $email',
+      email: email,
+    );
+  }
+
+  /// Resend OTP (verify email or reset password).
   Future<AuthResult> resendOtp({required String email}) async {
+    AppLogger.event('api_resend_otp', {'email': email});
     final res = await _client.post(
       ApiConstants.resendOtp,
       body: {'email': email},
     );
-    return AuthResult(message: res.message, email: email);
+    return AuthResult(
+      message: res.message.isNotEmpty ? res.message : 'Code resent to $email',
+      email: email,
+    );
   }
 
+  /// Step 3 — set new password with email + OTP.
   Future<AuthResult> resetPassword({
     required String email,
     required String otp,
     required String newPassword,
   }) async {
+    AppLogger.event('api_reset_password', {'email': email});
     final res = await _client.post(
       ApiConstants.resetPassword,
       body: {
@@ -79,7 +133,12 @@ class AuthRepository {
         'newPassword': newPassword,
       },
     );
-    return AuthResult(message: res.message, email: email);
+    return AuthResult(
+      message: res.message.isNotEmpty
+          ? res.message
+          : 'Password reset successfully',
+      email: email,
+    );
   }
 
   String? _readToken(dynamic data) {

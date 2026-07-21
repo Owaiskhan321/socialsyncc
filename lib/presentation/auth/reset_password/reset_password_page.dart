@@ -10,7 +10,14 @@ import '../../../core/widgets/app_input.dart';
 import 'reset_password_presenter.dart';
 
 class ResetPasswordPage extends StatefulWidget {
-  const ResetPasswordPage({super.key});
+  const ResetPasswordPage({
+    super.key,
+    required this.email,
+    required this.otp,
+  });
+
+  final String email;
+  final String otp;
 
   @override
   State<ResetPasswordPage> createState() => _ResetPasswordPageState();
@@ -25,7 +32,10 @@ class _ResetPasswordPageState extends State<ResetPasswordPage>
   @override
   void initState() {
     super.initState();
-    _presenter = ResetPasswordPresenter();
+    _presenter = ResetPasswordPresenter(
+      email: widget.email,
+      otp: widget.otp,
+    );
     _presenter.attach(this);
   }
 
@@ -56,123 +66,131 @@ class _ResetPasswordPageState extends State<ResetPasswordPage>
       value: _presenter.cubit as ResetPasswordCubit,
       child: KeyboardDismissScope(
         child: Scaffold(
-        backgroundColor: AppColors.white,
-        body: SafeArea(
-          child: SingleChildScrollView(
-            padding: const EdgeInsets.symmetric(horizontal: 24),
-            keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const SizedBox(height: 8),
-                _AuthBackButton(onTap: () => context.pop()),
-                const SizedBox(height: 40),
-                Container(
-                  width: 56,
-                  height: 56,
-                  decoration: BoxDecoration(
-                    color: AppColors.blue50,
-                    borderRadius: BorderRadius.circular(16),
+          backgroundColor: AppColors.white,
+          body: SafeArea(
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.symmetric(horizontal: 24),
+              keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const SizedBox(height: 8),
+                  _AuthBackButton(onTap: () => context.pop()),
+                  const SizedBox(height: 40),
+                  Container(
+                    width: 56,
+                    height: 56,
+                    decoration: BoxDecoration(
+                      color: AppColors.blue50,
+                      borderRadius: BorderRadius.circular(16),
+                    ),
+                    child: const Icon(
+                      Icons.shield_outlined,
+                      size: 26,
+                      color: AppColors.primary,
+                    ),
                   ),
-                  child: const Icon(
-                    Icons.shield_outlined,
-                    size: 26,
-                    color: AppColors.primary,
+                  const SizedBox(height: 24),
+                  const Text(
+                    'Set new password',
+                    style: TextStyle(
+                      fontSize: 28,
+                      fontWeight: FontWeight.w700,
+                      color: AppColors.gray900,
+                      letterSpacing: -0.4,
+                    ),
                   ),
-                ),
-                const SizedBox(height: 24),
-                const Text(
-                  'Set new password',
-                  style: TextStyle(
-                    fontSize: 28,
-                    fontWeight: FontWeight.w700,
-                    color: AppColors.gray900,
-                    letterSpacing: -0.4,
+                  const SizedBox(height: 10),
+                  const Text(
+                    'Your new password must be different from previously used passwords.',
+                    style: TextStyle(
+                      fontSize: 15,
+                      color: AppColors.gray500,
+                      height: 1.5,
+                    ),
                   ),
-                ),
-                const SizedBox(height: 10),
-                const Text(
-                  'Your new password must be different from previously used passwords.',
-                  style: TextStyle(
-                    fontSize: 15,
-                    color: AppColors.gray500,
-                    height: 1.5,
+                  const SizedBox(height: 32),
+                  BlocBuilder<ResetPasswordCubit, ResetPasswordState>(
+                    builder: (context, state) {
+                      return AppInput(
+                        controller: _passwordCtrl,
+                        icon: Icons.lock_outline_rounded,
+                        label: 'New password',
+                        hint: '••••••••',
+                        obscure: state.obscurePassword,
+                        onChanged: _presenter.onPasswordChanged,
+                      );
+                    },
                   ),
-                ),
-                const SizedBox(height: 32),
-                BlocBuilder<ResetPasswordCubit, ResetPasswordState>(
-                  builder: (context, state) {
-                    return AppInput(
-                      controller: _passwordCtrl,
-                      icon: Icons.lock_outline_rounded,
-                      label: 'New password',
-                      hint: '••••••••',
-                      obscure: state.obscurePassword,
-                      onChanged: _presenter.onPasswordChanged,
-                    );
-                  },
-                ),
-                const SizedBox(height: 16),
-                BlocBuilder<ResetPasswordCubit, ResetPasswordState>(
-                  builder: (context, state) {
-                    return Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        AppInput(
-                          controller: _confirmCtrl,
-                          icon: Icons.lock_outline_rounded,
-                          label: 'Confirm password',
-                          hint: '••••••••',
-                          obscure: state.obscureConfirm,
-                          onChanged: _presenter.onConfirmChanged,
-                        ),
-                        if (state.hasConfirmInput) ...[
-                          const SizedBox(height: 10),
-                          Row(
-                            children: [
-                              Icon(
-                                state.passwordsMatch
-                                    ? Icons.check_circle_rounded
-                                    : Icons.cancel_rounded,
-                                size: 16,
-                                color: state.passwordsMatch
-                                    ? AppColors.success
-                                    : AppColors.danger,
-                              ),
-                              const SizedBox(width: 6),
-                              Text(
-                                state.passwordsMatch
-                                    ? 'Passwords match'
-                                    : "Passwords don't match",
-                                style: TextStyle(
-                                  fontSize: 13,
-                                  fontWeight: FontWeight.w500,
+                  const SizedBox(height: 16),
+                  BlocBuilder<ResetPasswordCubit, ResetPasswordState>(
+                    builder: (context, state) {
+                      return Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          AppInput(
+                            controller: _confirmCtrl,
+                            icon: Icons.lock_outline_rounded,
+                            label: 'Confirm password',
+                            hint: '••••••••',
+                            obscure: state.obscureConfirm,
+                            onChanged: _presenter.onConfirmChanged,
+                          ),
+                          if (state.hasConfirmInput) ...[
+                            const SizedBox(height: 10),
+                            Row(
+                              children: [
+                                Icon(
+                                  state.passwordsMatch
+                                      ? Icons.check_circle_rounded
+                                      : Icons.cancel_rounded,
+                                  size: 16,
                                   color: state.passwordsMatch
                                       ? AppColors.success
                                       : AppColors.danger,
                                 ),
-                              ),
-                            ],
-                          ),
+                                const SizedBox(width: 6),
+                                Text(
+                                  state.passwordsMatch
+                                      ? 'Passwords match'
+                                      : "Passwords don't match",
+                                  style: TextStyle(
+                                    fontSize: 13,
+                                    fontWeight: FontWeight.w500,
+                                    color: state.passwordsMatch
+                                        ? AppColors.success
+                                        : AppColors.danger,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ],
                         ],
-                      ],
-                    );
-                  },
-                ),
-                const SizedBox(height: 28),
-                AppButton(
-                  label: 'Reset Password',
-                  onPressed: () {
-                    KeyboardDismiss.hide(context);
-                    _presenter.resetPassword();
-                  },
-                ),
-                const SizedBox(height: 32),
-              ],
+                      );
+                    },
+                  ),
+                  const SizedBox(height: 28),
+                  BlocBuilder<ResetPasswordCubit, ResetPasswordState>(
+                    buildWhen: (a, b) => a.loading != b.loading,
+                    builder: (context, state) {
+                      return AppButton(
+                        label: state.loading ? 'Resetting…' : 'Reset Password',
+                        loading: state.loading,
+                        onPressed: state.loading
+                            ? null
+                            : () {
+                                KeyboardDismiss.hide(context);
+                                _presenter.resetPassword();
+                              },
+                      );
+                    },
+                  ),
+                  const SizedBox(height: 32),
+                ],
+              ),
             ),
           ),
         ),
-      ),
       ),
     );
   }
@@ -195,7 +213,11 @@ class _AuthBackButton extends StatelessWidget {
           borderRadius: BorderRadius.circular(12),
           border: Border.all(color: AppColors.gray200),
         ),
-        child: const Icon(Icons.chevron_left_rounded, size: 22, color: AppColors.gray700),
+        child: const Icon(
+          Icons.chevron_left_rounded,
+          size: 22,
+          color: AppColors.gray700,
+        ),
       ),
     );
   }

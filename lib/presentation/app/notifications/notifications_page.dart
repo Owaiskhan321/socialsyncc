@@ -64,17 +64,41 @@ class _NotificationsView extends StatelessWidget {
             Expanded(
               child: BlocBuilder<NotificationsCubit, NotificationsState>(
                 builder: (context, state) {
-                  return ListView.separated(
-                    padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
-                    itemCount: state.items.length,
-                    separatorBuilder: (_, __) => const SizedBox(height: 10),
-                    itemBuilder: (context, i) {
-                      final n = state.items[i];
-                      return _NotificationCard(
-                        notification: n,
-                        onTap: () => context.read<NotificationsCubit>().markRead(n.id),
-                      ).animate().fadeIn(delay: (50 * i).ms).slideY(begin: 0.05, end: 0);
-                    },
+                  if (state.loading) {
+                    return const Center(child: CircularProgressIndicator());
+                  }
+                  if (state.items.isEmpty) {
+                    return RefreshIndicator(
+                      onRefresh: () => context.read<NotificationsCubit>().load(),
+                      child: ListView(
+                        physics: const AlwaysScrollableScrollPhysics(),
+                        children: const [
+                          SizedBox(height: 120),
+                          Center(
+                            child: Text(
+                              'No notifications yet',
+                              style: TextStyle(color: AppColors.gray400, fontWeight: FontWeight.w500),
+                            ),
+                          ),
+                        ],
+                      ),
+                    );
+                  }
+                  return RefreshIndicator(
+                    onRefresh: () => context.read<NotificationsCubit>().load(),
+                    child: ListView.separated(
+                      physics: const AlwaysScrollableScrollPhysics(),
+                      padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
+                      itemCount: state.items.length,
+                      separatorBuilder: (_, _) => const SizedBox(height: 10),
+                      itemBuilder: (context, i) {
+                        final n = state.items[i];
+                        return _NotificationCard(
+                          notification: n,
+                          onTap: () => context.read<NotificationsCubit>().markRead(n.id),
+                        ).animate().fadeIn(delay: (50 * i).ms).slideY(begin: 0.05, end: 0);
+                      },
+                    ),
                   );
                 },
               ),

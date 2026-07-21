@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
@@ -8,6 +10,7 @@ import '../../../core/utils/keyboard_dismiss.dart';
 import '../../../core/widgets/app_button.dart';
 import '../../../core/widgets/app_input.dart';
 import '../../../core/widgets/app_snackbar.dart';
+import '../../../core/widgets/social_logos.dart';
 import 'login_presenter.dart';
 
 class LoginPage extends StatefulWidget {
@@ -152,7 +155,9 @@ class _LoginPageState extends State<LoginPage> implements LoginView {
                       return AppButton(
                         label: 'Sign In',
                         loading: state.loading,
-                        onPressed: () {
+                        onPressed: state.loading || state.socialLoading
+                            ? null
+                            : () {
                           KeyboardDismiss.hide(context);
                           _presenter.signIn();
                         },
@@ -162,24 +167,55 @@ class _LoginPageState extends State<LoginPage> implements LoginView {
                   const SizedBox(height: 28),
                   const _OrDivider(label: 'or continue with'),
                   const SizedBox(height: 20),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: _SocialOutlineButton(
-                          label: 'Google',
-                          icon: Icons.g_mobiledata_rounded,
-                          onTap: _presenter.continueWithGoogle,
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: _SocialOutlineButton(
-                          label: 'Apple',
-                          icon: Icons.apple,
-                          onTap: _presenter.continueWithApple,
-                        ),
-                      ),
-                    ],
+                  BlocBuilder<LoginCubit, LoginState>(
+                    builder: (context, state) {
+                      final googleLoading =
+                          state.socialProvider == SocialSignInProvider.google;
+                      final appleLoading =
+                          state.socialProvider == SocialSignInProvider.apple;
+                      final disabled = state.loading || state.socialLoading;
+
+                      if (Platform.isIOS) {
+                        return Row(
+                          children: [
+                            Expanded(
+                              child: _SocialOutlineButton(
+                                label: 'Google',
+                                leading: const GoogleLogo(size: 20),
+                                loading: googleLoading,
+                                onTap: disabled ? null : () {
+                                  KeyboardDismiss.hide(context);
+                                  _presenter.continueWithGoogle();
+                                },
+                              ),
+                            ),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: _SocialOutlineButton(
+                                label: 'Apple',
+                                leading: const AppleLogo(size: 22),
+                                loading: appleLoading,
+                                onTap: disabled ? null : () {
+                                  KeyboardDismiss.hide(context);
+                                  _presenter.continueWithApple();
+                                },
+                              ),
+                            ),
+                          ],
+                        );
+                      }
+
+                      return _SocialOutlineButton(
+                        label: 'Continue with Google',
+                        leading: const GoogleLogo(size: 20),
+                        loading: googleLoading,
+                        fullWidth: true,
+                        onTap: disabled ? null : () {
+                          KeyboardDismiss.hide(context);
+                          _presenter.continueWithGoogle();
+                        },
+                      );
+                    },
                   ),
                   const SizedBox(height: 40),
                   Center(
@@ -265,41 +301,59 @@ class _OrDivider extends StatelessWidget {
 class _SocialOutlineButton extends StatelessWidget {
   const _SocialOutlineButton({
     required this.label,
-    required this.icon,
+    required this.leading,
     required this.onTap,
+    this.loading = false,
+    this.fullWidth = false,
   });
 
   final String label;
-  final IconData icon;
-  final VoidCallback onTap;
+  final Widget leading;
+  final VoidCallback? onTap;
+  final bool loading;
+  final bool fullWidth;
 
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        padding: const EdgeInsets.symmetric(vertical: 14),
-        decoration: BoxDecoration(
-          color: AppColors.white,
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: AppColors.gray200, width: 1.5),
-        ),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(icon, size: 22, color: AppColors.gray800),
-            const SizedBox(width: 8),
-            Text(
+    final child = Container(
+      width: fullWidth ? double.infinity : null,
+      padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 12),
+      decoration: BoxDecoration(
+        color: AppColors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: AppColors.gray200, width: 1.5),
+      ),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        mainAxisSize: fullWidth ? MainAxisSize.max : MainAxisSize.min,
+        children: [
+          if (loading)
+            const SizedBox(
+              width: 20,
+              height: 20,
+              child: CircularProgressIndicator(strokeWidth: 2),
+            )
+          else
+            leading,
+          const SizedBox(width: 8),
+          Flexible(
+            child: Text(
               label,
+              overflow: TextOverflow.ellipsis,
               style: const TextStyle(
                 fontSize: 14,
                 fontWeight: FontWeight.w600,
                 color: AppColors.gray800,
               ),
             ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
+
+    if (onTap == null) {
+      return Opacity(opacity: 0.55, child: child);
+    }
+    return GestureDetector(onTap: onTap, child: child);
   }
 }

@@ -6,7 +6,6 @@ import 'package:intl/intl.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/widgets/platform_icon.dart';
 import '../../../data/models/models.dart';
-import '../../../data/repositories/app_data.dart';
 import 'calendar_cubit.dart';
 
 class CalendarPage extends StatelessWidget {
@@ -50,63 +49,66 @@ class _CalendarView extends StatelessWidget {
               ),
             ),
             Expanded(
-              child: ListView(
-                padding: const EdgeInsets.fromLTRB(20, 16, 20, 100),
-                children: [
-                  _MonthCard().animate().fadeIn(duration: 280.ms),
-                  const SizedBox(height: 20),
-                  BlocBuilder<CalendarCubit, CalendarState>(
-                    builder: (context, state) {
-                      final events = state.selectedEvents;
-                      return Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            'January ${state.selectedDay}, ${state.year}',
-                            style: const TextStyle(
-                              fontSize: 16,
-                              fontWeight: FontWeight.w700,
-                              color: AppColors.gray900,
+              child: BlocBuilder<CalendarCubit, CalendarState>(
+                builder: (context, state) {
+                  if (state.loading && state.posts.isEmpty) {
+                    return const Center(child: CircularProgressIndicator());
+                  }
+                  final events = state.selectedEvents;
+                  final monthName = DateFormat.MMMM().format(DateTime(state.year, state.month));
+                  return RefreshIndicator(
+                    onRefresh: () => context.read<CalendarCubit>().load(),
+                    child: ListView(
+                      physics: const AlwaysScrollableScrollPhysics(),
+                      padding: const EdgeInsets.fromLTRB(20, 16, 20, 100),
+                      children: [
+                        const _MonthCard().animate().fadeIn(duration: 280.ms),
+                        const SizedBox(height: 20),
+                        Text(
+                          '$monthName ${state.selectedDay}, ${state.year}',
+                          style: const TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.w700,
+                            color: AppColors.gray900,
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          events.isEmpty
+                              ? 'No scheduled posts'
+                              : '${events.length} scheduled post${events.length == 1 ? '' : 's'}',
+                          style: const TextStyle(fontSize: 13, color: AppColors.gray500),
+                        ),
+                        const SizedBox(height: 12),
+                        if (events.isEmpty)
+                          Container(
+                            width: double.infinity,
+                            padding: const EdgeInsets.all(24),
+                            decoration: BoxDecoration(
+                              color: AppColors.white,
+                              borderRadius: BorderRadius.circular(16),
+                              border: Border.all(color: AppColors.gray100),
                             ),
-                          ),
-                          const SizedBox(height: 4),
-                          Text(
-                            events.isEmpty
-                                ? 'No scheduled posts'
-                                : '${events.length} scheduled post${events.length == 1 ? '' : 's'}',
-                            style: const TextStyle(fontSize: 13, color: AppColors.gray500),
-                          ),
-                          const SizedBox(height: 12),
-                          if (events.isEmpty)
-                            Container(
-                              width: double.infinity,
-                              padding: const EdgeInsets.all(24),
-                              decoration: BoxDecoration(
-                                color: AppColors.white,
-                                borderRadius: BorderRadius.circular(16),
-                                border: Border.all(color: AppColors.gray100),
-                              ),
-                              child: const Text(
-                                'Nothing scheduled for this day.',
-                                textAlign: TextAlign.center,
-                                style: TextStyle(color: AppColors.gray400),
-                              ),
-                            )
-                          else
-                            ...events.asMap().entries.map(
-                                  (e) => Padding(
-                                    padding: const EdgeInsets.only(bottom: 10),
-                                    child: _EventCard(event: e.value)
-                                        .animate()
-                                        .fadeIn(delay: (60 * e.key).ms)
-                                        .slideY(begin: 0.06, end: 0),
-                                  ),
+                            child: const Text(
+                              'Nothing scheduled for this day.',
+                              textAlign: TextAlign.center,
+                              style: TextStyle(color: AppColors.gray400),
+                            ),
+                          )
+                        else
+                          ...events.asMap().entries.map(
+                                (e) => Padding(
+                                  padding: const EdgeInsets.only(bottom: 10),
+                                  child: _EventCard(event: e.value)
+                                      .animate()
+                                      .fadeIn(delay: (60 * e.key).ms)
+                                      .slideY(begin: 0.06, end: 0),
                                 ),
-                        ],
-                      );
-                    },
-                  ),
-                ],
+                              ),
+                      ],
+                    ),
+                  );
+                },
               ),
             ),
           ],
@@ -117,16 +119,19 @@ class _CalendarView extends StatelessWidget {
 }
 
 class _MonthCard extends StatelessWidget {
+  const _MonthCard();
+
   @override
   Widget build(BuildContext context) {
     return BlocBuilder<CalendarCubit, CalendarState>(
       builder: (context, state) {
         final first = DateTime(state.year, state.month, 1);
         final daysInMonth = DateTime(state.year, state.month + 1, 0).day;
-        final startWeekday = first.weekday % 7; // Sunday=0
+        final startWeekday = first.weekday % 7;
         final monthLabel = DateFormat('MMMM yyyy').format(first);
         final totalCells = startWeekday + daysInMonth;
         final rows = (totalCells / 7).ceil();
+        final eventsByDay = state.eventsByDay;
 
         return Container(
           padding: const EdgeInsets.all(16),
@@ -191,9 +196,7 @@ class _MonthCard extends StatelessWidget {
                         return const Expanded(child: SizedBox(height: 40));
                       }
                       final selected = day == state.selectedDay;
-                      final hasEvents = AppData.calEvents.containsKey(day) &&
-                          state.month == 1 &&
-                          state.year == 2024;
+                      final hasEvents = eventsByDay.containsKey(day);
                       return Expanded(
                         child: GestureDetector(
                           onTap: () => context.read<CalendarCubit>().selectDay(day),

@@ -13,7 +13,9 @@ class RegisterState extends Equatable {
     this.email = '',
     this.phone = '',
     this.password = '',
+    this.confirmPassword = '',
     this.obscurePassword = true,
+    this.obscureConfirm = true,
     this.agreedToTerms = false,
     this.loading = false,
   });
@@ -22,7 +24,9 @@ class RegisterState extends Equatable {
   final String email;
   final String phone;
   final String password;
+  final String confirmPassword;
   final bool obscurePassword;
+  final bool obscureConfirm;
   final bool agreedToTerms;
   final bool loading;
 
@@ -35,12 +39,17 @@ class RegisterState extends Equatable {
     return 4;
   }
 
+  bool get passwordsMatch =>
+      password.isNotEmpty && password == confirmPassword;
+
   RegisterState copyWith({
     String? fullName,
     String? email,
     String? phone,
     String? password,
+    String? confirmPassword,
     bool? obscurePassword,
+    bool? obscureConfirm,
     bool? agreedToTerms,
     bool? loading,
   }) {
@@ -49,19 +58,30 @@ class RegisterState extends Equatable {
       email: email ?? this.email,
       phone: phone ?? this.phone,
       password: password ?? this.password,
+      confirmPassword: confirmPassword ?? this.confirmPassword,
       obscurePassword: obscurePassword ?? this.obscurePassword,
+      obscureConfirm: obscureConfirm ?? this.obscureConfirm,
       agreedToTerms: agreedToTerms ?? this.agreedToTerms,
       loading: loading ?? this.loading,
     );
   }
 
   @override
-  List<Object?> get props =>
-      [fullName, email, phone, password, obscurePassword, agreedToTerms, loading];
+  List<Object?> get props => [
+        fullName,
+        email,
+        phone,
+        password,
+        confirmPassword,
+        obscurePassword,
+        obscureConfirm,
+        agreedToTerms,
+        loading,
+      ];
 }
 
 abstract class RegisterView implements MvpView {
-  void onRegisterSuccess(String message);
+  void onRegisterSuccess(String message, String email);
   void goLogin();
 }
 
@@ -72,8 +92,11 @@ class RegisterCubit extends Cubit<RegisterState> {
   void setEmail(String v) => emit(state.copyWith(email: v));
   void setPhone(String v) => emit(state.copyWith(phone: v));
   void setPassword(String v) => emit(state.copyWith(password: v));
+  void setConfirmPassword(String v) => emit(state.copyWith(confirmPassword: v));
   void toggleObscure() =>
       emit(state.copyWith(obscurePassword: !state.obscurePassword));
+  void toggleObscureConfirm() =>
+      emit(state.copyWith(obscureConfirm: !state.obscureConfirm));
   void toggleTerms() =>
       emit(state.copyWith(agreedToTerms: !state.agreedToTerms));
   void setLoading(bool v) => emit(state.copyWith(loading: v));
@@ -91,10 +114,16 @@ class RegisterPresenter extends MvpPresenter<RegisterState, RegisterView> {
   void onEmailChanged(String v) => _c.setEmail(v);
   void onPhoneChanged(String v) => _c.setPhone(v);
   void onPasswordChanged(String v) => _c.setPassword(v);
+  void onConfirmPasswordChanged(String v) => _c.setConfirmPassword(v);
 
   void togglePasswordVisibility() {
     AppLogger.event('register_toggle_password');
     _c.toggleObscure();
+  }
+
+  void toggleConfirmVisibility() {
+    AppLogger.event('register_toggle_confirm');
+    _c.toggleObscureConfirm();
   }
 
   void toggleTerms() {
@@ -120,6 +149,14 @@ class RegisterPresenter extends MvpPresenter<RegisterState, RegisterView> {
       view?.showMessage('Password must be at least 8 characters');
       return;
     }
+    if (s.confirmPassword.isEmpty) {
+      view?.showMessage('Please confirm your password');
+      return;
+    }
+    if (!s.passwordsMatch) {
+      view?.showMessage("Passwords don't match");
+      return;
+    }
     if (!s.agreedToTerms) {
       view?.showMessage('Please agree to the Terms of Service');
       return;
@@ -138,7 +175,12 @@ class RegisterPresenter extends MvpPresenter<RegisterState, RegisterView> {
           phone: s.phone.trim(),
         ),
       );
-      view?.onRegisterSuccess(result.message);
+      view?.onRegisterSuccess(
+        result.message.isNotEmpty
+            ? result.message
+            : 'Account created. Check your email for the verification code.',
+        s.email.trim(),
+      );
     } on ApiException catch (e) {
       view?.showMessage(e.message);
     } catch (e, st) {

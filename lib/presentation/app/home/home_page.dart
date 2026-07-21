@@ -1,4 +1,3 @@
-import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
@@ -9,95 +8,146 @@ import '../../../core/theme/app_colors.dart';
 import '../../../core/widgets/platform_icon.dart';
 import '../../../core/widgets/status_badge.dart';
 import '../../../data/models/models.dart';
-import '../../../data/repositories/app_data.dart';
 import '../../shell/tab_cubit.dart';
+import 'home_cubit.dart';
 
 class HomePage extends StatelessWidget {
   const HomePage({super.key});
 
   @override
   Widget build(BuildContext context) {
-    final recent = AppData.posts.take(3).toList();
+    return BlocProvider(
+      create: (_) => HomeCubit(),
+      child: const _HomeView(),
+    );
+  }
+}
 
+class _HomeView extends StatelessWidget {
+  const _HomeView();
+
+  @override
+  Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: AppColors.gray50,
       body: SafeArea(
         bottom: false,
-        child: Column(
-          children: [
-            _TopBar(
-              onBell: () {
-                AppLogger.navigation('home', 'notifications');
-                context.push('/notifications');
-              },
-              onAvatar: () {
-                AppLogger.navigation('home', 'profile');
-                context.push('/profile');
-              },
-            ),
-            Expanded(
-              child: ListView(
-                padding: const EdgeInsets.fromLTRB(20, 16, 20, 100),
-                children: [
-                  _StatsGrid().animate().fadeIn(duration: 300.ms),
-                  const SizedBox(height: 24),
-                  _SectionHeader(
-                    title: 'Platforms',
-                    action: 'Manage',
-                    onAction: () {
-                      AppLogger.navigation('home', 'platforms');
-                      context.push('/platforms');
-                    },
+        child: BlocBuilder<HomeCubit, HomeState>(
+          builder: (context, state) {
+            return Column(
+              children: [
+                _TopBar(
+                  greeting: state.greeting,
+                  name: state.name,
+                  onBell: () {
+                    AppLogger.navigation('home', 'notifications');
+                    context.push('/notifications');
+                  },
+                  onAvatar: () {
+                    AppLogger.navigation('home', 'profile');
+                    context.push('/profile');
+                  },
+                ),
+                Expanded(
+                  child: RefreshIndicator(
+                    onRefresh: () => context.read<HomeCubit>().load(),
+                    child: state.loading && state.recentPosts.isEmpty
+                        ? ListView(
+                            physics: const AlwaysScrollableScrollPhysics(),
+                            children: const [
+                              SizedBox(height: 160),
+                              Center(child: CircularProgressIndicator()),
+                            ],
+                          )
+                        : ListView(
+                            physics: const AlwaysScrollableScrollPhysics(),
+                            padding: const EdgeInsets.fromLTRB(20, 16, 20, 100),
+                            children: [
+                              if (state.error != null) ...[
+                                Text(
+                                  state.error!,
+                                  style: const TextStyle(color: AppColors.danger, fontSize: 12),
+                                ),
+                                const SizedBox(height: 8),
+                              ],
+                              _StatsGrid(
+                                connected: state.connected,
+                                scheduled: state.scheduled,
+                                published: state.published,
+                                drafts: state.drafts,
+                              ).animate().fadeIn(duration: 300.ms),
+                              const SizedBox(height: 24),
+                              _SectionHeader(
+                                title: 'Platforms',
+                                action: 'Manage',
+                                onAction: () {
+                                  AppLogger.navigation('home', 'platforms');
+                                  context.push('/platforms');
+                                },
+                              ),
+                              const SizedBox(height: 12),
+                              _PlatformsRow(ids: state.platformIds).animate().fadeIn(delay: 80.ms),
+                              const SizedBox(height: 24),
+                              _SectionHeader(
+                                title: 'Recent Posts',
+                                action: 'View all',
+                                onAction: () {
+                                  AppLogger.event('home_view_posts');
+                                  context.read<TabCubit>().setTab(1);
+                                },
+                              ),
+                              const SizedBox(height: 12),
+                              if (state.recentPosts.isEmpty)
+                                const Padding(
+                                  padding: EdgeInsets.symmetric(vertical: 24),
+                                  child: Center(
+                                    child: Text(
+                                      'No posts yet — create your first one',
+                                      style: TextStyle(color: AppColors.gray400, fontWeight: FontWeight.w500),
+                                    ),
+                                  ),
+                                )
+                              else
+                                ...state.recentPosts.asMap().entries.map(
+                                      (e) => Padding(
+                                        padding: const EdgeInsets.only(bottom: 10),
+                                        child: _PostCard(post: e.value)
+                                            .animate()
+                                            .fadeIn(delay: (100 + e.key * 60).ms)
+                                            .slideY(begin: 0.08, end: 0),
+                                      ),
+                                    ),
+                              const SizedBox(height: 16),
+                              const Text(
+                                'Quick Actions',
+                                style: TextStyle(
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.w700,
+                                  color: AppColors.gray900,
+                                ),
+                              ),
+                              const SizedBox(height: 12),
+                              _QuickActions(
+                                onCreate: () {
+                                  AppLogger.navigation('home', 'create');
+                                  context.push('/create');
+                                },
+                                onCalendar: () {
+                                  AppLogger.event('home_calendar');
+                                  context.read<TabCubit>().setTab(2);
+                                },
+                                onAnalytics: () {
+                                  AppLogger.event('home_analytics');
+                                  context.read<TabCubit>().setTab(3);
+                                },
+                              ).animate().fadeIn(delay: 200.ms),
+                            ],
+                          ),
                   ),
-                  const SizedBox(height: 12),
-                  _PlatformsRow().animate().fadeIn(delay: 80.ms),
-                  const SizedBox(height: 24),
-                  _SectionHeader(
-                    title: 'Recent Posts',
-                    action: 'View all',
-                    onAction: () {
-                      AppLogger.event('home_view_posts');
-                      context.read<TabCubit>().setTab(1);
-                    },
-                  ),
-                  const SizedBox(height: 12),
-                  ...recent.asMap().entries.map(
-                        (e) => Padding(
-                          padding: const EdgeInsets.only(bottom: 10),
-                          child: _PostCard(post: e.value)
-                              .animate()
-                              .fadeIn(delay: (100 + e.key * 60).ms)
-                              .slideY(begin: 0.08, end: 0),
-                        ),
-                      ),
-                  const SizedBox(height: 16),
-                  const Text(
-                    'Quick Actions',
-                    style: TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.w700,
-                      color: AppColors.gray900,
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  _QuickActions(
-                    onCreate: () {
-                      AppLogger.navigation('home', 'create');
-                      context.push('/create');
-                    },
-                    onCalendar: () {
-                      AppLogger.event('home_calendar');
-                      context.read<TabCubit>().setTab(2);
-                    },
-                    onAnalytics: () {
-                      AppLogger.event('home_analytics');
-                      context.read<TabCubit>().setTab(3);
-                    },
-                  ).animate().fadeIn(delay: 200.ms),
-                ],
-              ),
-            ),
-          ],
+                ),
+              ],
+            );
+          },
         ),
       ),
     );
@@ -105,8 +155,15 @@ class HomePage extends StatelessWidget {
 }
 
 class _TopBar extends StatelessWidget {
-  const _TopBar({required this.onBell, required this.onAvatar});
+  const _TopBar({
+    required this.greeting,
+    required this.name,
+    required this.onBell,
+    required this.onAvatar,
+  });
 
+  final String greeting;
+  final String name;
   final VoidCallback onBell;
   final VoidCallback onAvatar;
 
@@ -120,22 +177,22 @@ class _TopBar extends StatelessWidget {
       ),
       child: Row(
         children: [
-          const Expanded(
+          Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  'Good morning 👋',
-                  style: TextStyle(
+                  '$greeting 👋',
+                  style: const TextStyle(
                     fontSize: 13,
                     fontWeight: FontWeight.w500,
                     color: AppColors.gray500,
                   ),
                 ),
-                SizedBox(height: 2),
+                const SizedBox(height: 2),
                 Text(
-                  'Alex Johnson',
-                  style: TextStyle(
+                  name,
+                  style: const TextStyle(
                     fontSize: 20,
                     fontWeight: FontWeight.w700,
                     color: AppColors.gray900,
@@ -147,49 +204,28 @@ class _TopBar extends StatelessWidget {
           ),
           GestureDetector(
             onTap: onBell,
-            child: Stack(
-              clipBehavior: Clip.none,
-              children: [
-                Container(
-                  width: 40,
-                  height: 40,
-                  decoration: BoxDecoration(
-                    color: AppColors.gray50,
-                    borderRadius: BorderRadius.circular(12),
-                    border: Border.all(color: AppColors.gray100),
-                  ),
-                  child: const Icon(Icons.notifications_outlined, size: 20, color: AppColors.gray700),
-                ),
-                Positioned(
-                  right: 8,
-                  top: 8,
-                  child: Container(
-                    width: 8,
-                    height: 8,
-                    decoration: BoxDecoration(
-                      color: AppColors.danger,
-                      shape: BoxShape.circle,
-                      border: Border.all(color: AppColors.white, width: 1.5),
-                    ),
-                  ),
-                ),
-              ],
+            child: Container(
+              width: 40,
+              height: 40,
+              decoration: BoxDecoration(
+                color: AppColors.gray50,
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: AppColors.gray100),
+              ),
+              child: const Icon(Icons.notifications_outlined, size: 20, color: AppColors.gray700),
             ),
           ),
           const SizedBox(width: 10),
           GestureDetector(
             onTap: onAvatar,
-            child: ClipRRect(
-              borderRadius: BorderRadius.circular(20),
-              child: CachedNetworkImage(
-                imageUrl: AppData.avatarUrl,
-                width: 40,
-                height: 40,
-                fit: BoxFit.cover,
-                placeholder: (_, __) => Container(color: AppColors.gray200),
-                errorWidget: (_, __, ___) => Container(
-                  color: AppColors.blue100,
-                  child: const Icon(Icons.person, color: AppColors.primary),
+            child: CircleAvatar(
+              radius: 20,
+              backgroundColor: AppColors.blue100,
+              child: Text(
+                name.isNotEmpty ? name[0].toUpperCase() : '?',
+                style: const TextStyle(
+                  fontWeight: FontWeight.w700,
+                  color: AppColors.primary,
                 ),
               ),
             ),
@@ -201,13 +237,25 @@ class _TopBar extends StatelessWidget {
 }
 
 class _StatsGrid extends StatelessWidget {
+  const _StatsGrid({
+    required this.connected,
+    required this.scheduled,
+    required this.published,
+    required this.drafts,
+  });
+
+  final int connected;
+  final int scheduled;
+  final int published;
+  final int drafts;
+
   @override
   Widget build(BuildContext context) {
-    const items = [
-      _StatItem(label: 'Connected', value: '7', color: AppColors.primary, bg: AppColors.blue50),
-      _StatItem(label: 'Scheduled', value: '12', color: AppColors.warning, bg: AppColors.amber50),
-      _StatItem(label: 'Published', value: '48', color: AppColors.success, bg: AppColors.green50),
-      _StatItem(label: 'Drafts', value: '5', color: AppColors.gray700, bg: AppColors.gray100),
+    final items = [
+      _StatItem(label: 'Connected', value: '$connected', color: AppColors.primary, bg: AppColors.blue50),
+      _StatItem(label: 'Scheduled', value: '$scheduled', color: AppColors.warning, bg: AppColors.amber50),
+      _StatItem(label: 'Published', value: '$published', color: AppColors.success, bg: AppColors.green50),
+      _StatItem(label: 'Drafts', value: '$drafts', color: AppColors.gray700, bg: AppColors.gray100),
     ];
     return GridView.count(
       crossAxisCount: 2,
@@ -307,23 +355,26 @@ class _SectionHeader extends StatelessWidget {
 }
 
 class _PlatformsRow extends StatelessWidget {
+  const _PlatformsRow({required this.ids});
+
+  final List<String> ids;
+
   @override
   Widget build(BuildContext context) {
-    final platforms = AppData.platforms.take(8).toList();
     return SizedBox(
       height: 56,
       child: ListView.separated(
         scrollDirection: Axis.horizontal,
-        itemCount: platforms.length,
-        separatorBuilder: (_, __) => const SizedBox(width: 10),
+        itemCount: ids.length,
+        separatorBuilder: (_, _) => const SizedBox(width: 10),
         itemBuilder: (_, i) {
-          final p = platforms[i];
+          final id = ids[i];
           return GestureDetector(
             onTap: () {
               AppLogger.navigation('home', 'platform_detail');
-              context.push('/platforms/${p.id}');
+              context.push('/platforms/$id');
             },
-            child: PlatformIcon(id: p.id, size: 48),
+            child: PlatformIcon(id: id, size: 48),
           );
         },
       ),
@@ -338,7 +389,9 @@ class _PostCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
+    return GestureDetector(
+      onTap: post.id.isEmpty ? null : () => context.push('/posts/${post.id}'),
+      child: Container(
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
         color: AppColors.white,
@@ -350,14 +403,13 @@ class _PostCard extends StatelessWidget {
         children: [
           ClipRRect(
             borderRadius: BorderRadius.circular(12),
-            child: post.thumbnail != null
-                ? CachedNetworkImage(
-                    imageUrl: post.thumbnail!,
+            child: post.thumbnail != null && post.thumbnail!.startsWith('http')
+                ? Image.network(
+                    post.thumbnail!,
                     width: 56,
                     height: 56,
                     fit: BoxFit.cover,
-                    placeholder: (_, __) => Container(width: 56, height: 56, color: AppColors.gray100),
-                    errorWidget: (_, __, ___) => Container(
+                    errorBuilder: (_, _, _) => Container(
                       width: 56,
                       height: 56,
                       color: AppColors.gray100,
@@ -413,7 +465,11 @@ class _PostCard extends StatelessWidget {
                     if (post.publishAt != null)
                       Text(
                         post.publishAt!,
-                        style: const TextStyle(fontSize: 11, color: AppColors.gray400, fontWeight: FontWeight.w500),
+                        style: const TextStyle(
+                          fontSize: 11,
+                          color: AppColors.gray400,
+                          fontWeight: FontWeight.w500,
+                        ),
                       ),
                   ],
                 ),
@@ -422,6 +478,7 @@ class _PostCard extends StatelessWidget {
           ),
         ],
       ),
+    ),
     );
   }
 }
@@ -441,8 +498,20 @@ class _QuickActions extends StatelessWidget {
   Widget build(BuildContext context) {
     final actions = <({IconData icon, String label, Color color, Color bg, VoidCallback onTap})>[
       (icon: Icons.edit_outlined, label: 'New Post', color: AppColors.primary, bg: AppColors.blue50, onTap: onCreate),
-      (icon: Icons.calendar_today_outlined, label: 'Calendar', color: AppColors.warning, bg: AppColors.amber50, onTap: onCalendar),
-      (icon: Icons.bar_chart_rounded, label: 'Analytics', color: AppColors.purple, bg: AppColors.purple50, onTap: onAnalytics),
+      (
+        icon: Icons.calendar_today_outlined,
+        label: 'Calendar',
+        color: AppColors.warning,
+        bg: AppColors.amber50,
+        onTap: onCalendar
+      ),
+      (
+        icon: Icons.bar_chart_rounded,
+        label: 'Analytics',
+        color: AppColors.purple,
+        bg: AppColors.purple50,
+        onTap: onAnalytics
+      ),
     ];
     return Row(
       children: [
@@ -473,7 +542,11 @@ class _QuickActions extends StatelessWidget {
                       const SizedBox(height: 8),
                       Text(
                         actions[i].label,
-                        style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: AppColors.gray700),
+                        style: const TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                          color: AppColors.gray700,
+                        ),
                       ),
                     ],
                   ),

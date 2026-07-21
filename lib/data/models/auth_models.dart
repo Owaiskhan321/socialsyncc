@@ -34,6 +34,31 @@ class LoginRequest {
       };
 }
 
+class SocialLoginRequest {
+  const SocialLoginRequest({
+    required this.provider,
+    required this.idToken,
+    required this.timezone,
+    required this.deviceId,
+    this.fcmToken,
+  });
+
+  /// `google` | `apple`
+  final String provider;
+  final String idToken;
+  final String timezone;
+  final String deviceId;
+  final String? fcmToken;
+
+  Map<String, dynamic> toJson() => {
+        'provider': provider,
+        'idToken': idToken,
+        'timezone': timezone,
+        'deviceId': deviceId,
+        'fcmToken': fcmToken ?? '',
+      };
+}
+
 class AuthResult {
   const AuthResult({
     required this.message,
