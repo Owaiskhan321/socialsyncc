@@ -119,6 +119,7 @@ class SocialAuthService {
       token: result.token,
       email: result.email,
       name: result.name,
+      wallet: result.wallet,
     );
   }
 }

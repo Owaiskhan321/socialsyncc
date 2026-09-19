@@ -12,6 +12,13 @@ class SocialRepository {
 
   final ApiClient _client;
 
+  /// Catalog from GET /platforms (active / comingSoon + connected).
+  Future<List<PlatformModel>> fetchPlatformCatalog() async {
+    AppLogger.event('api_platforms_catalog');
+    final res = await _client.get(ApiConstants.platforms);
+    return PlatformModelCatalog.listFromApi(res.data);
+  }
+
   /// Full social-accounts payload (connected + disconnected + counts).
   Future<SocialAccountsResult> fetchSocialAccountsResult() async {
     AppLogger.event('api_social_accounts');
@@ -143,6 +150,7 @@ class SocialRepository {
         'linkedin_organization',
       'google business' || 'google_business' => 'google',
       'youtube' => 'youtube',
+      'snap' || 'snapchat' => 'snapchat',
       _ => PlatformOAuth.uiIdFor(p),
     };
   }

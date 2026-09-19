@@ -13,7 +13,7 @@ class AppBottomNav extends StatelessWidget {
 
   final int activeIndex;
   final ValueChanged<int> onTab;
-  final VoidCallback onCreate;
+  final ValueChanged<BuildContext> onCreate;
 
   @override
   Widget build(BuildContext context) {
@@ -45,46 +45,52 @@ class AppBottomNav extends StatelessWidget {
                 onTap: () => onTab(1),
               ),
               Expanded(
-                child: GestureDetector(
-                  onTap: () {
-                    HapticFeedback.mediumImpact();
-                    onCreate();
-                  },
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Transform.translate(
-                        offset: const Offset(0, -18),
-                        child: Container(
-                          width: 56,
-                          height: 56,
-                          decoration: BoxDecoration(
-                            color: AppColors.primary,
-                            shape: BoxShape.circle,
-                            boxShadow: [
-                              BoxShadow(
-                                color: AppColors.primary.withValues(alpha: 0.35),
-                                blurRadius: 16,
-                                offset: const Offset(0, 6),
-                              ),
-                            ],
-                          ),
-                          child: const Icon(Icons.edit_outlined, color: AppColors.white, size: 22),
-                        ),
-                      ),
-                      Transform.translate(
-                        offset: const Offset(0, -12),
-                        child: const Text(
-                          'Create',
-                          style: TextStyle(
-                            fontSize: 10,
-                            fontWeight: FontWeight.w600,
-                            color: AppColors.gray400,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Transform.translate(
+                      offset: const Offset(0, -18),
+                      child: Builder(
+                        builder: (createCtx) => GestureDetector(
+                          onTap: () {
+                            HapticFeedback.mediumImpact();
+                            onCreate(createCtx);
+                          },
+                          child: Container(
+                            width: 56,
+                            height: 56,
+                            decoration: BoxDecoration(
+                              color: AppColors.primary,
+                              shape: BoxShape.circle,
+                              boxShadow: [
+                                BoxShadow(
+                                  color: AppColors.primary.withValues(alpha: 0.35),
+                                  blurRadius: 16,
+                                  offset: const Offset(0, 6),
+                                ),
+                              ],
+                            ),
+                            child: const Icon(
+                              Icons.edit_outlined,
+                              color: AppColors.white,
+                              size: 22,
+                            ),
                           ),
                         ),
                       ),
-                    ],
-                  ),
+                    ),
+                    Transform.translate(
+                      offset: const Offset(0, -12),
+                      child: const Text(
+                        'Create',
+                        style: TextStyle(
+                          fontSize: 10,
+                          fontWeight: FontWeight.w600,
+                          color: AppColors.gray400,
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
               ),
               _NavItem(

@@ -10,9 +10,11 @@ import 'core/logger/app_logger.dart';
 import 'core/network/api_client_provider.dart';
 import 'core/network/session_storage.dart';
 import 'core/network/session_sync.dart';
+import 'core/notifications/post_status_notification_service.dart';
 import 'core/realtime/pusher_service.dart';
 import 'core/theme/app_colors.dart';
 import 'core/theme/app_theme.dart';
+import 'core/widgets/app_messenger.dart';
 import 'navigation/app_router.dart';
 
 void main() async {
@@ -32,8 +34,10 @@ void main() async {
 
   await FirebaseBootstrap.initialize();
   await SessionStorage.hydrateClient(appApiClient);
+  PostStatusNotificationService.instance.ensureListening();
   unawaited(syncUserProfileFromApi());
   unawaited(PusherRealtimeService().connectIfLoggedIn());
+  unawaited(PostStatusNotificationService.instance.initialize());
   unawaited(DeepLinkService.instance.start());
 
   AppLogger.i('SocialSyncc starting…');
@@ -78,6 +82,7 @@ class _SocialSynccAppState extends State<SocialSynccApp> {
     return MaterialApp.router(
       title: 'SocialSyncc',
       debugShowCheckedModeBanner: false,
+      scaffoldMessengerKey: AppMessenger.scaffoldMessengerKey,
       theme: AppTheme.light,
       routerConfig: _router,
     );

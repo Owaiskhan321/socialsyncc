@@ -12,5 +12,7 @@ Future<void> syncUserProfileFromApi() async {
     email: profile.email.isNotEmpty ? profile.email : await SessionStorage.getEmail(),
     name: profile.name,
     userId: profile.id.isNotEmpty ? profile.id : await SessionStorage.getUserId(),
+    credits: profile.wallet?.credits,
+    freeCredits: profile.wallet?.freeCredits,
   );
 }

@@ -4,6 +4,7 @@ import '../../core/network/api_client_provider.dart';
 import '../../core/network/api_constants.dart';
 import '../../core/network/session_storage.dart';
 import '../models/auth_models.dart';
+import '../models/models.dart';
 
 class AuthRepository {
   AuthRepository({ApiClient? client}) : _client = client ?? appApiClient;
@@ -32,6 +33,7 @@ class AuthRepository {
 
     final token = _readToken(res.data);
     final name = _readString(res.data, const ['name', 'fullName', 'user.name']);
+    final wallet = _readWallet(res.data);
 
     if (token != null && token.isNotEmpty) {
       _client.setToken(token);
@@ -39,6 +41,8 @@ class AuthRepository {
         token: token,
         email: request.email,
         name: name,
+        credits: wallet?.credits,
+        freeCredits: wallet?.freeCredits,
       );
     }
 
@@ -47,6 +51,7 @@ class AuthRepository {
       token: token,
       email: request.email,
       name: name,
+      wallet: wallet,
     );
   }
 
@@ -61,6 +66,7 @@ class AuthRepository {
     final email = _readString(res.data, const ['email', 'user.email']);
     final name = _readString(res.data, const ['name', 'fullName', 'user.name']);
     final userId = _readString(res.data, const ['id', 'userId', 'user.id', 'uuid']);
+    final wallet = _readWallet(res.data);
 
     if (token != null && token.isNotEmpty) {
       _client.setToken(token);
@@ -69,6 +75,8 @@ class AuthRepository {
         email: email,
         name: name,
         userId: userId,
+        credits: wallet?.credits,
+        freeCredits: wallet?.freeCredits,
       );
     }
 
@@ -79,6 +87,7 @@ class AuthRepository {
       token: token,
       email: email,
       name: name,
+      wallet: wallet,
     );
   }
 
@@ -151,6 +160,17 @@ class AuthRepository {
       'data.token',
       'user.token',
     ]);
+  }
+
+  WalletInfo? _readWallet(dynamic data) {
+    if (data is! Map) return null;
+    final map = Map<String, dynamic>.from(data);
+    if (map['wallet'] is Map ||
+        (map['user'] is Map &&
+            Map<String, dynamic>.from(map['user'] as Map)['wallet'] is Map)) {
+      return WalletInfo.fromJson(map);
+    }
+    return null;
   }
 
   String? _readString(dynamic data, List<String> keys) {

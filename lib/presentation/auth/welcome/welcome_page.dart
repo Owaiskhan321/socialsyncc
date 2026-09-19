@@ -1,14 +1,11 @@
 import 'package:flutter/material.dart';
-import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter_animate/flutter_animate.dart';
-import 'package:go_router/go_router.dart';
 
 import '../../../core/logger/app_logger.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/utils/keyboard_dismiss.dart';
 import '../../../core/widgets/app_button.dart';
-import '../../../data/repositories/app_data.dart';
-
+import '../../../navigation/app_launch_transition.dart';
 class WelcomePage extends StatelessWidget {
   const WelcomePage({super.key});
 
@@ -30,11 +27,14 @@ class WelcomePage extends StatelessWidget {
                 child: Stack(
                   fit: StackFit.expand,
                   children: [
-                    CachedNetworkImage(
-                      imageUrl: AppData.welcomeHeroUrl,
-                      fit: BoxFit.cover,
-                      placeholder: (context, url) => Container(color: AppColors.gray100),
-                      errorWidget: (context, url, error) => Container(color: AppColors.gray200),
+                    ColoredBox(
+                      color: const Color(0xFF0A1F1C),
+                      child: Image.asset(
+                        'assets/splash_platforms.png',
+                        fit: BoxFit.cover,
+                        width: double.infinity,
+                        height: double.infinity,
+                      ),
                     ),
                     const DecoratedBox(
                       decoration: BoxDecoration(
@@ -108,7 +108,7 @@ class WelcomePage extends StatelessWidget {
                       const SizedBox(height: 24),
                       Wrap(
                         spacing: 12,
-                        children: ['5,000+ brands', '9 platforms', 'Trusted globally']
+                        children: ['5,000+ brands', '10 platforms', 'Trusted globally']
                             .map(
                               (t) => Row(
                                 mainAxisSize: MainAxisSize.min,
@@ -132,21 +132,25 @@ class WelcomePage extends StatelessWidget {
                             .toList(),
                       ),
                       const Spacer(),
-                      AppButton(
-                        label: 'Get Started',
-                        onPressed: () {
-                          AppLogger.navigation('welcome', 'register');
-                          context.push('/register');
-                        },
+                      Builder(
+                        builder: (btnCtx) => AppButton(
+                          label: 'Get Started',
+                          onPressed: () {
+                            AppLogger.navigation('welcome', 'register');
+                            btnCtx.pushFromSource('/register', borderRadius: 16);
+                          },
+                        ),
                       ).animate().fadeIn(delay: 400.ms).slideY(begin: 0.2, end: 0),
                       const SizedBox(height: 12),
-                      AppButton(
-                        label: 'Sign In',
-                        variant: AppBtnVariant.outline,
-                        onPressed: () {
-                          AppLogger.navigation('welcome', 'login');
-                          context.push('/login');
-                        },
+                      Builder(
+                        builder: (btnCtx) => AppButton(
+                          label: 'Sign In',
+                          variant: AppBtnVariant.outline,
+                          onPressed: () {
+                            AppLogger.navigation('welcome', 'login');
+                            btnCtx.pushFromSource('/login', borderRadius: 16);
+                          },
+                        ),
                       ).animate().fadeIn(delay: 500.ms),
                     ],
                   ),

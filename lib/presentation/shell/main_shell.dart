@@ -1,12 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
-import 'package:go_router/go_router.dart';
 
 import '../../core/realtime/pusher_service.dart';
 import '../../core/logger/app_logger.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/utils/keyboard_dismiss.dart';
 import '../../core/widgets/app_bottom_nav.dart';
+import '../../navigation/app_launch_transition.dart';
 import '../app/analytics/analytics_page.dart';
 import '../app/calendar/calendar_page.dart';
 import '../app/home/home_page.dart';
@@ -62,10 +62,10 @@ class _MainShellBody extends StatelessWidget {
               AppLogger.event('shell_tab', {'index': i});
               context.read<TabCubit>().setTab(i);
             },
-            onCreate: () {
+            onCreate: (sourceCtx) {
               KeyboardDismiss.hide(context);
               AppLogger.navigation('shell', 'create');
-              context.push('/create');
+              sourceCtx.pushFromSource('/create', borderRadius: 28);
             },
           ),
         ),

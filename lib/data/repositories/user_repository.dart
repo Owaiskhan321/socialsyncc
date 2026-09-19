@@ -2,7 +2,9 @@ import '../../core/logger/app_logger.dart';
 import '../../core/network/api_client.dart';
 import '../../core/network/api_client_provider.dart';
 import '../../core/network/api_constants.dart';
+import '../../core/network/session_storage.dart';
 import '../models/api_models.dart';
+import '../models/models.dart';
 
 class UserRepository {
   UserRepository({ApiClient? client}) : _client = client ?? appApiClient;
@@ -12,7 +14,25 @@ class UserRepository {
   Future<UserProfile> fetchMe() async {
     AppLogger.event('api_auth_me');
     final res = await _client.get(ApiConstants.me);
-    return UserProfile.fromJson(res.data);
+    final profile = UserProfile.fromJson(res.data);
+    if (profile.wallet != null) {
+      await SessionStorage.saveWallet(
+        credits: profile.wallet!.credits,
+        freeCredits: profile.wallet!.freeCredits,
+      );
+    }
+    return profile;
+  }
+
+  Future<WalletInfo> fetchWallet() async {
+    AppLogger.event('api_wallet');
+    final res = await _client.get(ApiConstants.wallet);
+    final wallet = WalletInfo.fromJson(res.data);
+    await SessionStorage.saveWallet(
+      credits: wallet.credits,
+      freeCredits: wallet.freeCredits,
+    );
+    return wallet;
   }
 }
 

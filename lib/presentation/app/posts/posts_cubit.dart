@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:equatable/equatable.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
+import '../../../core/events/post_status_bus.dart';
 import '../../../core/events/posts_refresh_bus.dart';
 import '../../../core/logger/app_logger.dart';
 import '../../../core/network/api_exception.dart';
@@ -62,16 +63,28 @@ class PostsCubit extends Cubit<PostsState> {
     load();
     _refreshSub =
         PostsRefreshBus.instance.stream.listen((_) => refreshSilently());
+    _statusSub = PostStatusBus.instance.stream.listen(_onPostStatus);
   }
 
   final PostsRepository _repo;
   List<PostModel> _source = [];
   StreamSubscription<void>? _refreshSub;
+  StreamSubscription<PostStatusUpdate>? _statusSub;
 
   @override
   Future<void> close() {
     _refreshSub?.cancel();
+    _statusSub?.cancel();
     return super.close();
+  }
+
+  void _onPostStatus(PostStatusUpdate update) {
+    if (isClosed || update.status == null) return;
+    final i = _source.indexWhere((p) => p.id == update.postId);
+    if (i < 0) return;
+    if (_source[i].status == update.status) return;
+    _source[i] = _source[i].copyWith(status: update.status);
+    _apply();
   }
 
   Future<void> load({bool refresh = false}) async {
@@ -151,12 +164,22 @@ class PostsCubit extends Cubit<PostsState> {
                 p.status == PostStatus.publishing,
           )
           .toList(),
-      PostsFilter.published =>
-        list.where((p) => p.status == PostStatus.published).toList(),
+      PostsFilter.published => list
+          .where(
+            (p) =>
+                p.status == PostStatus.published ||
+                p.status == PostStatus.partial,
+          )
+          .toList(),
       PostsFilter.draft =>
         list.where((p) => p.status == PostStatus.draft).toList(),
-      PostsFilter.failed =>
-        list.where((p) => p.status == PostStatus.failed).toList(),
+      PostsFilter.failed => list
+          .where(
+            (p) =>
+                p.status == PostStatus.failed ||
+                p.status == PostStatus.partial,
+          )
+          .toList(),
     };
     final q = state.query.trim().toLowerCase();
     if (q.isNotEmpty) {

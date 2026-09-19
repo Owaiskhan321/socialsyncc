@@ -13,6 +13,7 @@ abstract final class AppData {
     PlatformModel(id: 'pinterest', name: 'Pinterest', color: 0xFFE60023, accounts: ['Brand Board']),
     PlatformModel(id: 'youtube', name: 'YouTube', color: 0xFFFF0000, accounts: ['Main Channel']),
     PlatformModel(id: 'google', name: 'Google Business', color: 0xFF4285F4, accounts: ['Primary Location']),
+    PlatformModel(id: 'snapchat', name: 'Snapchat', color: 0xFFFFFC00, accounts: ['Public Profile']),
   ];
 
   static const initials = <String, String>{
@@ -26,6 +27,7 @@ abstract final class AppData {
     'pinterest': 'P',
     'youtube': '▶',
     'google': 'G',
+    'snapchat': 'S',
   };
 
   static String platformName(String id) {
@@ -147,7 +149,6 @@ abstract final class AppData {
   ];
 
   static const avatarUrl = 'https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=88&h=88&fit=crop&auto=format';
-  static const welcomeHeroUrl = 'https://images.unsplash.com/photo-1611162617474-5b21e879e113?w=800&h=720&fit=crop&auto=format';
   static const previewImageUrl = 'https://images.unsplash.com/photo-1460925895917-afdab827c52f?w=400&h=250&fit=crop';
 
   static PlatformModel? platformById(String id) {

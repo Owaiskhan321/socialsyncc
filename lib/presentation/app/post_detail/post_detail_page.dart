@@ -1,4 +1,3 @@
-import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
@@ -9,6 +8,7 @@ import '../../../core/widgets/app_button.dart';
 import '../../../core/widgets/app_snackbar.dart';
 import '../../../core/widgets/mobile_header.dart';
 import '../../../core/widgets/platform_icon.dart';
+import '../../../core/widgets/post_media_gallery.dart';
 import '../../../core/widgets/status_badge.dart';
 import '../../../data/models/models.dart';
 import '../../../data/repositories/app_data.dart';
@@ -42,7 +42,16 @@ class _PostDetailView extends StatelessWidget {
       listener: (context, state) {
         if (state.error != null) AppSnackBar.error(context, state.error!);
         if (state.statusBecamePublished) {
-          AppSnackBar.success(context, 'Post published');
+          final post = state.post;
+          if (post != null &&
+              (post.status == PostStatus.partial || post.hasPartialFailure)) {
+            AppSnackBar.error(
+              context,
+              'Published with some platform failures',
+            );
+          } else {
+            AppSnackBar.success(context, 'Post published');
+          }
         } else if (state.justPublished) {
           AppSnackBar.success(context, 'Publishing…');
         }
@@ -88,30 +97,16 @@ class _PostDetailView extends StatelessWidget {
                                   context.read<PostDetailCubit>().load(),
                               child: ListView(
                                 physics: const AlwaysScrollableScrollPhysics(),
-                                padding: const EdgeInsets.fromLTRB(20, 12, 20, 32),
+                                padding:
+                                    const EdgeInsets.fromLTRB(20, 12, 20, 32),
                                 children: [
-                                  if (post.thumbnail != null &&
-                                      post.thumbnail!.startsWith('http'))
+                                  if (post.displayMediaUrls.isNotEmpty)
                                     ClipRRect(
-                                      borderRadius: BorderRadius.circular(18),
-                                      child: CachedNetworkImage(
-                                        imageUrl: post.thumbnail!,
-                                        width: double.infinity,
+                                      borderRadius: BorderRadius.circular(16),
+                                      child: PostMediaGallery(
+                                        urls: post.displayMediaUrls,
+                                        isVideo: post.mediaIsVideo,
                                         height: 220,
-                                        fit: BoxFit.cover,
-                                        placeholder: (_, __) => Container(
-                                          height: 220,
-                                          color: AppColors.gray100,
-                                        ),
-                                        errorWidget: (_, __, ___) => Container(
-                                          height: 220,
-                                          color: AppColors.gray100,
-                                          child: const Icon(
-                                            Icons.image_outlined,
-                                            color: AppColors.gray400,
-                                            size: 40,
-                                          ),
-                                        ),
                                       ),
                                     ).animate().fadeIn(),
                                   const SizedBox(height: 16),
@@ -120,10 +115,12 @@ class _PostDetailView extends StatelessWidget {
                                     decoration: BoxDecoration(
                                       color: AppColors.white,
                                       borderRadius: BorderRadius.circular(16),
-                                      border: Border.all(color: AppColors.gray100),
+                                      border:
+                                          Border.all(color: AppColors.gray100),
                                     ),
                                     child: Column(
-                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
                                       children: [
                                         Row(
                                           children: [
@@ -173,7 +170,8 @@ class _PostDetailView extends StatelessWidget {
                                                 : AppColors.gray800,
                                           ),
                                         ),
-                                        if (post.platforms.isNotEmpty) ...[
+                                        if (post.displayPlatformResults
+                                            .isNotEmpty) ...[
                                           const SizedBox(height: 16),
                                           const Text(
                                             'Platforms',
@@ -187,51 +185,15 @@ class _PostDetailView extends StatelessWidget {
                                           Wrap(
                                             spacing: 8,
                                             runSpacing: 8,
-                                            children: post.platforms
+                                            children: post
+                                                .displayPlatformResults
                                                 .map(
-                                                  (id) => Container(
-                                                    padding: const EdgeInsets.fromLTRB(
-                                                      8,
-                                                      6,
-                                                      12,
-                                                      6,
-                                                    ),
-                                                    decoration: BoxDecoration(
-                                                      color: AppColors.gray50,
-                                                      borderRadius:
-                                                          BorderRadius.circular(20),
-                                                      border: Border.all(
-                                                        color: AppColors.gray200,
-                                                      ),
-                                                    ),
-                                                    child: Row(
-                                                      mainAxisSize: MainAxisSize.min,
-                                                      children: [
-                                                        PlatformIcon(id: id, size: 22),
-                                                        const SizedBox(width: 8),
-                                                        Text(
-                                                          AppData.platformName(id),
-                                                          style: const TextStyle(
-                                                            fontSize: 13,
-                                                            fontWeight: FontWeight.w600,
-                                                            color: AppColors.gray800,
-                                                          ),
-                                                        ),
-                                                      ],
-                                                    ),
+                                                  (result) =>
+                                                      _PlatformChip(
+                                                    result: result,
                                                   ),
                                                 )
                                                 .toList(),
-                                          ),
-                                        ],
-                                        if (post.id.isNotEmpty) ...[
-                                          const SizedBox(height: 16),
-                                          Text(
-                                            'ID: ${post.id}',
-                                            style: const TextStyle(
-                                              fontSize: 11,
-                                              color: AppColors.gray400,
-                                            ),
                                           ),
                                         ],
                                       ],
@@ -244,7 +206,8 @@ class _PostDetailView extends StatelessWidget {
                                           ? 'Publishing…'
                                           : 'Publish now',
                                       loading: state.publishing,
-                                      onPressed: state.publishing || state.deleting
+                                      onPressed: state.publishing ||
+                                              state.deleting
                                           ? null
                                           : () => context
                                               .read<PostDetailCubit>()
@@ -253,12 +216,15 @@ class _PostDetailView extends StatelessWidget {
                                     const SizedBox(height: 12),
                                   ],
                                   AppButton(
-                                    label: state.deleting ? 'Deleting…' : 'Delete post',
+                                    label: state.deleting
+                                        ? 'Deleting…'
+                                        : 'Delete post',
                                     variant: AppBtnVariant.danger,
                                     loading: state.deleting,
-                                    onPressed: state.deleting || state.publishing
-                                        ? null
-                                        : () => _confirmDelete(context),
+                                    onPressed:
+                                        state.deleting || state.publishing
+                                            ? null
+                                            : () => _confirmDelete(context),
                                   ),
                                 ],
                               ),
@@ -275,26 +241,142 @@ class _PostDetailView extends StatelessWidget {
   Future<void> _confirmDelete(BuildContext context) async {
     final confirmed = await showDialog<bool>(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Delete post?'),
-        content: const Text(
-          'This will permanently delete the post. This action cannot be undone.',
+      barrierColor: AppColors.gray900.withValues(alpha: 0.45),
+      barrierDismissible: true,
+      builder: (ctx) => Dialog(
+        backgroundColor: AppColors.white,
+        elevation: 0,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+        insetPadding: const EdgeInsets.symmetric(horizontal: 28),
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(22, 26, 22, 20),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: 56,
+                height: 56,
+                decoration: BoxDecoration(
+                  color: AppColors.red50,
+                  borderRadius: BorderRadius.circular(18),
+                ),
+                child: const Icon(
+                  Icons.delete_outline_rounded,
+                  color: AppColors.danger,
+                  size: 28,
+                ),
+              ),
+              const SizedBox(height: 18),
+              const Text(
+                'Delete post?',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  fontSize: 20,
+                  fontWeight: FontWeight.w700,
+                  color: AppColors.gray900,
+                  letterSpacing: -0.3,
+                ),
+              ),
+              const SizedBox(height: 10),
+              const Text(
+                'This will permanently delete the post. This action cannot be undone.',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  fontSize: 14,
+                  height: 1.5,
+                  color: AppColors.gray500,
+                ),
+              ),
+              const SizedBox(height: 26),
+              Row(
+                children: [
+                  Expanded(
+                    child: AppButton(
+                      label: 'Cancel',
+                      variant: AppBtnVariant.secondary,
+                      size: AppBtnSize.lg,
+                      onPressed: () => Navigator.of(ctx).pop(false),
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: AppButton(
+                      label: 'Delete',
+                      variant: AppBtnVariant.danger,
+                      size: AppBtnSize.lg,
+                      onPressed: () => Navigator.of(ctx).pop(true),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
         ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(ctx).pop(false),
-            child: const Text('Cancel'),
-          ),
-          TextButton(
-            onPressed: () => Navigator.of(ctx).pop(true),
-            style: TextButton.styleFrom(foregroundColor: AppColors.danger),
-            child: const Text('Delete'),
-          ),
-        ],
       ),
     );
     if (confirmed == true && context.mounted) {
       await context.read<PostDetailCubit>().deletePost();
     }
+  }
+}
+
+/// Compact chip: icon + name + green/red status dot.
+class _PlatformChip extends StatelessWidget {
+  const _PlatformChip({required this.result});
+
+  final PostPlatformResult result;
+
+  @override
+  Widget build(BuildContext context) {
+    final Color? dotColor = switch (result.status) {
+      PostStatus.published => AppColors.success,
+      PostStatus.failed => AppColors.danger,
+      PostStatus.publishing => AppColors.primary,
+      PostStatus.partial => AppColors.warning,
+      _ => null,
+    };
+
+    return Container(
+      padding: const EdgeInsets.fromLTRB(8, 6, 12, 6),
+      decoration: BoxDecoration(
+        color: AppColors.gray50,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: AppColors.gray200),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Stack(
+            clipBehavior: Clip.none,
+            children: [
+              PlatformIcon(id: result.platformId, size: 22),
+              if (dotColor != null)
+                Positioned(
+                  right: -2,
+                  top: -2,
+                  child: Container(
+                    width: 9,
+                    height: 9,
+                    decoration: BoxDecoration(
+                      color: dotColor,
+                      shape: BoxShape.circle,
+                      border: Border.all(color: AppColors.white, width: 1.5),
+                    ),
+                  ),
+                ),
+            ],
+          ),
+          const SizedBox(width: 8),
+          Text(
+            AppData.platformName(result.platformId),
+            style: const TextStyle(
+              fontSize: 13,
+              fontWeight: FontWeight.w600,
+              color: AppColors.gray800,
+            ),
+          ),
+        ],
+      ),
+    );
   }
 }

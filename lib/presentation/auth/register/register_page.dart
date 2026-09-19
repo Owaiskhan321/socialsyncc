@@ -8,6 +8,7 @@ import '../../../core/utils/keyboard_dismiss.dart';
 import '../../../core/widgets/app_button.dart';
 import '../../../core/widgets/app_input.dart';
 import '../../../core/widgets/app_snackbar.dart';
+import '../../../navigation/app_launch_transition.dart';
 import 'register_presenter.dart';
 
 class RegisterPage extends StatefulWidget {
@@ -56,8 +57,9 @@ class _RegisterPageState extends State<RegisterPage> implements RegisterView {
     AppLogger.navigation('register', 'otp-verify');
     Future.delayed(const Duration(milliseconds: 500), () {
       if (!mounted) return;
-      context.push(
+      context.pushFromSource(
         '/otp-verify?email=${Uri.encodeComponent(email)}&purpose=verify',
+        borderRadius: 20,
       );
     });
   }

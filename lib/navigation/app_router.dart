@@ -25,6 +25,7 @@ import '../core/deeplink/deep_link_config.dart';
 import '../core/deeplink/deep_link_service.dart';
 import '../core/network/session_storage.dart';
 import '../core/widgets/app_exit_guard.dart';
+import 'app_launch_transition.dart';
 import 'auth_routes.dart';
 
 final GlobalKey<NavigatorState> rootNavigatorKey = GlobalKey<NavigatorState>();
@@ -101,96 +102,159 @@ GoRouter createAppRouter() {
       GoRoute(
         path: '/splash',
         name: 'splash',
-        builder: (_, __) => const SplashPage(),
+        pageBuilder: (context, state) => buildAppLaunchPage(
+          context: context,
+          state: state,
+          enableExpand: false,
+          child: const SplashPage(),
+        ),
       ),
       GoRoute(
         path: '/welcome',
         name: 'welcome',
-        builder: (_, __) => const AppExitGuard(child: WelcomePage()),
+        pageBuilder: (context, state) => buildAppLaunchPage(
+          context: context,
+          state: state,
+          enableExpand: false,
+          child: const AppExitGuard(child: WelcomePage()),
+        ),
       ),
       GoRoute(
         path: '/login',
         name: 'login',
-        builder: (_, __) => const LoginPage(),
+        pageBuilder: (context, state) => buildAppLaunchPage(
+          context: context,
+          state: state,
+          child: const LoginPage(),
+        ),
       ),
       GoRoute(
         path: '/register',
         name: 'register',
-        builder: (_, __) => const RegisterPage(),
+        pageBuilder: (context, state) => buildAppLaunchPage(
+          context: context,
+          state: state,
+          child: const RegisterPage(),
+        ),
       ),
       GoRoute(
         path: '/forgot-password',
         name: 'forgot-password',
-        builder: (_, __) => const ForgotPasswordPage(),
+        pageBuilder: (context, state) => buildAppLaunchPage(
+          context: context,
+          state: state,
+          child: const ForgotPasswordPage(),
+        ),
       ),
       GoRoute(
         path: '/otp-verify',
         name: 'otp-verify',
-        builder: (context, state) {
+        pageBuilder: (context, state) {
           final email = state.uri.queryParameters['email'] ?? '';
           final purposeParam = state.uri.queryParameters['purpose'] ?? 'verify';
           final purpose = purposeParam == 'reset'
               ? OtpPurpose.resetPassword
               : OtpPurpose.verifyEmail;
-          return OtpVerifyPage(email: email, purpose: purpose);
+          return buildAppLaunchPage(
+            context: context,
+            state: state,
+            child: OtpVerifyPage(email: email, purpose: purpose),
+          );
         },
       ),
       GoRoute(
         path: '/reset-password',
         name: 'reset-password',
-        builder: (context, state) {
+        pageBuilder: (context, state) {
           final email = state.uri.queryParameters['email'] ?? '';
           final otp = state.uri.queryParameters['otp'] ?? '';
-          return ResetPasswordPage(email: email, otp: otp);
+          return buildAppLaunchPage(
+            context: context,
+            state: state,
+            child: ResetPasswordPage(email: email, otp: otp),
+          );
         },
       ),
       GoRoute(
         path: '/auth-success',
         name: 'auth-success',
-        builder: (_, __) => const AuthSuccessPage(),
+        pageBuilder: (context, state) => buildAppLaunchPage(
+          context: context,
+          state: state,
+          child: const AuthSuccessPage(),
+        ),
       ),
       GoRoute(
         path: '/home',
         name: 'home',
-        builder: (_, __) => const AppExitGuard(child: MainShell()),
+        pageBuilder: (context, state) => buildAppLaunchPage(
+          context: context,
+          state: state,
+          enableExpand: false,
+          child: const AppExitGuard(child: MainShell()),
+        ),
       ),
       GoRoute(
         path: '/create',
         name: 'create',
-        builder: (_, __) => const CreatePostPage(),
+        pageBuilder: (context, state) => buildAppLaunchPage(
+          context: context,
+          state: state,
+          child: const CreatePostPage(),
+        ),
       ),
       GoRoute(
         path: '/posts/:id',
         name: 'post-detail',
-        builder: (context, state) {
+        pageBuilder: (context, state) {
           final id = state.pathParameters['id'] ?? '';
-          return PostDetailPage(postId: id);
+          return buildAppLaunchPage(
+            context: context,
+            state: state,
+            child: PostDetailPage(postId: id),
+          );
         },
       ),
       GoRoute(
         path: '/notifications',
         name: 'notifications',
-        builder: (_, __) => const NotificationsPage(),
+        pageBuilder: (context, state) => buildAppLaunchPage(
+          context: context,
+          state: state,
+          child: const NotificationsPage(),
+        ),
       ),
       GoRoute(
         path: '/profile',
         name: 'profile',
-        builder: (_, __) => const ProfilePage(),
+        pageBuilder: (context, state) => buildAppLaunchPage(
+          context: context,
+          state: state,
+          child: const ProfilePage(),
+        ),
       ),
       GoRoute(
         path: '/settings',
         name: 'settings',
-        builder: (_, __) => const SettingsPage(),
+        pageBuilder: (context, state) => buildAppLaunchPage(
+          context: context,
+          state: state,
+          child: const SettingsPage(),
+        ),
       ),
       GoRoute(
         path: '/subscription',
         name: 'subscription',
-        builder: (_, __) => const SubscriptionPage(),
+        pageBuilder: (context, state) => buildAppLaunchPage(
+          context: context,
+          state: state,
+          child: const SubscriptionPage(),
+        ),
       ),
       GoRoute(
         path: '/oauth-connect',
         name: 'oauth-connect',
-        builder: (context, state) {
+        pageBuilder: (context, state) {
           final extra = state.extra;
           String url = '';
           String title = 'Connect account';
@@ -198,20 +262,32 @@ GoRouter createAppRouter() {
             url = extra['url']?.toString() ?? '';
             title = extra['title']?.toString() ?? title;
           }
-          return OAuthConnectPage(url: url, title: title);
+          return buildAppLaunchPage(
+            context: context,
+            state: state,
+            child: OAuthConnectPage(url: url, title: title),
+          );
         },
       ),
       GoRoute(
         path: '/platforms',
         name: 'platforms',
-        builder: (context, state) => const PlatformsPage(),
+        pageBuilder: (context, state) => buildAppLaunchPage(
+          context: context,
+          state: state,
+          child: const PlatformsPage(),
+        ),
         routes: [
           GoRoute(
             path: ':id',
             name: 'platform-detail',
-            builder: (context, state) {
+            pageBuilder: (context, state) {
               final id = state.pathParameters['id'] ?? 'facebook';
-              return PlatformDetailPage(platformId: id);
+              return buildAppLaunchPage(
+                context: context,
+                state: state,
+                child: PlatformDetailPage(platformId: id),
+              );
             },
           ),
         ],

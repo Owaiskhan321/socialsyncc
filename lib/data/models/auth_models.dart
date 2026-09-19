@@ -1,3 +1,5 @@
+import 'models.dart';
+
 class RegisterRequest {
   const RegisterRequest({
     required this.name,
@@ -65,10 +67,12 @@ class AuthResult {
     this.token,
     this.email,
     this.name,
+    this.wallet,
   });
 
   final String message;
   final String? token;
   final String? email;
   final String? name;
+  final WalletInfo? wallet;
 }

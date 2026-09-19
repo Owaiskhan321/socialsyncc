@@ -90,9 +90,10 @@ class PostsRepository {
     String? linkedinOrganizationId,
     String? linkedinLink,
     List<File> files = const [],
+    bool treatAsVideo = false,
   }) async {
-    // API expects at most one file under field name `files`.
-    final filesToSend = files.take(1).toList();
+    // Up to 5 images (or 1 video) under form field `files`.
+    final filesToSend = files.take(5).toList();
 
     // Match Apidog form-data shape as closely as possible.
     final fields = <String, String>{
@@ -155,7 +156,7 @@ class PostsRepository {
     final multipartFiles = <http.MultipartFile>[];
     for (final file in filesToSend) {
       final bytes = await file.readAsBytes();
-      final filename = _safeFileName(file);
+      final filename = _safeFileName(file, preferVideo: treatAsVideo);
       multipartFiles.add(
         http.MultipartFile.fromBytes(
           'files',
@@ -210,12 +211,12 @@ class PostsRepository {
     );
   }
 
-  String _safeFileName(File file) {
+  String _safeFileName(File file, {bool preferVideo = false}) {
     final raw = file.uri.pathSegments.isNotEmpty
         ? file.uri.pathSegments.last
-        : 'upload.jpg';
+        : (preferVideo ? 'upload.mp4' : 'upload.jpg');
     if (raw.contains('.') && raw.length > 3) return raw;
-    return 'upload.jpg';
+    return preferVideo ? 'upload.mp4' : 'upload.jpg';
   }
 
   MediaType _mediaTypeFor(String filename) {

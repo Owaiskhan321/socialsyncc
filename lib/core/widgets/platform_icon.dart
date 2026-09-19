@@ -26,6 +26,26 @@ class PlatformIcon extends StatelessWidget {
       );
     }
 
+    if (key == 'snapchat' || key == 'snap') {
+      return ClipRRect(
+        borderRadius: BorderRadius.circular(size * 0.28),
+        child: Image.asset(
+          'assets/snapchat_icon.png',
+          width: size,
+          height: size,
+          fit: BoxFit.cover,
+          errorBuilder: (_, __, ___) => _boxed(
+            background: const Color(0xFFFFFC00),
+            child: FaIcon(
+              FontAwesomeIcons.snapchat,
+              size: size * 0.48,
+              color: Colors.black,
+            ),
+          ),
+        ),
+      );
+    }
+
     final brand = _brandFor(key);
     if (brand == null) return SizedBox(width: size, height: size);
 
@@ -33,7 +53,7 @@ class PlatformIcon extends StatelessWidget {
     final icon = FaIcon(
       brand.icon,
       size: iconSize,
-      color: withBackground ? Colors.white : brand.brandColor,
+      color: withBackground ? brand.iconColor : brand.brandColor,
     );
 
     if (!withBackground) {
@@ -137,9 +157,11 @@ class _BrandStyle {
     required this.icon,
     required this.brandColor,
     this.gradient,
+    this.iconColor = Colors.white,
   });
 
   final FaIconData icon;
   final Color brandColor;
   final Gradient? gradient;
+  final Color iconColor;
 }

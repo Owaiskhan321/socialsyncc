@@ -128,6 +128,7 @@ class LiveAnalytics {
       'google': 0xFF4285F4,
       'threads': 0xFF000000,
       'meta': 0xFF1877F2,
+      'snapchat': 0xFFFFFC00,
     };
 
     final trendRaw = json['publishingTrend'];
@@ -220,6 +221,9 @@ class LiveAnalytics {
       switch (post.status) {
         case PostStatus.published:
           published++;
+        case PostStatus.partial:
+          published++;
+          failed++;
         case PostStatus.failed:
           failed++;
         case PostStatus.scheduled:
@@ -242,8 +246,16 @@ class LiveAnalytics {
       final key = '${dt.month}/${dt.day}';
       final cur = weekBuckets[key] ?? (pub: 0.0, fail: 0.0);
       weekBuckets[key] = (
-        pub: cur.pub + (post.status == PostStatus.published ? 1 : 0),
-        fail: cur.fail + (post.status == PostStatus.failed ? 1 : 0),
+        pub: cur.pub +
+            (post.status == PostStatus.published ||
+                    post.status == PostStatus.partial
+                ? 1
+                : 0),
+        fail: cur.fail +
+            (post.status == PostStatus.failed ||
+                    post.status == PostStatus.partial
+                ? 1
+                : 0),
       );
     }
 
@@ -281,6 +293,7 @@ class LiveAnalytics {
       'youtube': 0xFFFF0000,
       'google': 0xFF4285F4,
       'threads': 0xFF000000,
+      'snapchat': 0xFFFFFC00,
     };
     const names = {
       'facebook': 'Facebook',
@@ -293,6 +306,7 @@ class LiveAnalytics {
       'youtube': 'YouTube',
       'google': 'Google',
       'threads': 'Threads',
+      'snapchat': 'Snapchat',
     };
 
     final pie = platformCounts.entries
@@ -329,7 +343,22 @@ List<NotificationModel> notificationsFromPosts(List<PostModel> posts) {
           id: 'fail-${post.id}',
           type: 'failed',
           title: 'Publishing Failed',
-          body: '"${post.title}" failed to publish.',
+          body: post.failedPlatforms.isNotEmpty
+              ? '"${post.title}" failed on ${post.failedPlatforms.map((p) => p.platformId).join(', ')}.'
+              : '"${post.title}" failed to publish.',
+          time: post.publishAt ?? 'Recently',
+          read: false,
+        ),
+      );
+    } else if (post.status == PostStatus.partial) {
+      items.add(
+        NotificationModel(
+          id: 'partial-${post.id}',
+          type: 'failed',
+          title: 'Partially Published',
+          body: post.failedPlatforms.isNotEmpty
+              ? '"${post.title}" failed on ${post.failedPlatforms.map((p) => p.platformId).join(', ')}.'
+              : '"${post.title}" published with some platform failures.',
           time: post.publishAt ?? 'Recently',
           read: false,
         ),

@@ -1,6 +1,5 @@
 import 'dart:io';
 
-import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
@@ -9,12 +8,19 @@ import 'package:image_picker/image_picker.dart';
 
 import '../../../core/logger/app_logger.dart';
 import '../../../core/theme/app_colors.dart';
+import '../../../core/utils/image_aspect_crop.dart';
 import '../../../core/widgets/app_button.dart';
 import '../../../core/widgets/app_snackbar.dart';
+import '../../../core/widgets/local_video_preview.dart';
+import '../../../core/widgets/media_fullscreen_viewer.dart';
 import '../../../core/widgets/platform_icon.dart';
 import '../../../core/widgets/resource_dropdown.dart';
+import '../../../data/models/api_models.dart';
 import '../../../data/repositories/app_data.dart';
+import '../../../data/repositories/social_repository.dart';
 import 'create_post_cubit.dart';
+import 'image_crop_editor_page.dart';
+import 'platform_post_preview.dart';
 
 class CreatePostPage extends StatelessWidget {
   const CreatePostPage({super.key});
@@ -138,45 +144,104 @@ class _CreatePostView extends StatelessWidget {
                 builder: (context, state) {
                   final isLast = state.step == 3;
                   final submitLabel = state.postStatus.actionLabel;
-                  return AppButton(
-                    label: isLast
-                        ? (state.publishing ? 'Saving…' : submitLabel)
-                        : 'Next',
-                    loading: state.publishing,
-                    onPressed: state.publishing
-                        ? null
-                        : (state.canNext || isLast)
-                            ? () async {
-                                if (isLast) {
-                                  AppLogger.event('create_publish', {
-                                    'postStatus': state.postStatus.apiValue,
-                                  });
-                                  final ok =
-                                      await context.read<CreatePostCubit>().publish();
-                                  if (!context.mounted) return;
-                                  if (ok) {
-                                    AppLogger.navigation('create', 'home');
-                                    AppSnackBar.success(
-                                      context,
-                                      state.postStatus.successMessage,
-                                    );
-                                    if (context.canPop()) {
-                                      context.pop();
+                  final credits = state.selectedCreditsCost;
+                  final creditsLabel = credits <= 0
+                      ? 'Free to publish'
+                      : '$credits credit${credits == 1 ? '' : 's'} required';
+                  return Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      if (state.step == 1 &&
+                          state.selectedPlatforms.isNotEmpty) ...[
+                        Container(
+                          width: double.infinity,
+                          margin: const EdgeInsets.only(bottom: 12),
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 14,
+                            vertical: 10,
+                          ),
+                          decoration: BoxDecoration(
+                            color: AppColors.blue50,
+                            borderRadius: BorderRadius.circular(14),
+                            border: Border.all(
+                              color: AppColors.primary.withValues(alpha: 0.18),
+                            ),
+                          ),
+                          child: Row(
+                            children: [
+                              const Icon(
+                                Icons.bolt_rounded,
+                                size: 18,
+                                color: AppColors.primary,
+                              ),
+                              const SizedBox(width: 8),
+                              Expanded(
+                                child: Text(
+                                  creditsLabel,
+                                  style: const TextStyle(
+                                    fontSize: 13,
+                                    fontWeight: FontWeight.w700,
+                                    color: AppColors.primaryDark,
+                                  ),
+                                ),
+                              ),
+                              Text(
+                                '${state.selectedPlatforms.length} selected',
+                                style: const TextStyle(
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w500,
+                                  color: AppColors.gray500,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                      AppButton(
+                        label: isLast
+                            ? (state.publishing ? 'Saving…' : submitLabel)
+                            : 'Next',
+                        loading: state.publishing,
+                        onPressed: state.publishing
+                            ? null
+                            : (state.canNext || isLast)
+                                ? () async {
+                                    if (isLast) {
+                                      AppLogger.event('create_publish', {
+                                        'postStatus': state.postStatus.apiValue,
+                                      });
+                                      final ok = await context
+                                          .read<CreatePostCubit>()
+                                          .publish();
+                                      if (!context.mounted) return;
+                                      if (ok) {
+                                        AppLogger.navigation('create', 'home');
+                                        AppSnackBar.success(
+                                          context,
+                                          state.postStatus.successMessage,
+                                        );
+                                        if (context.canPop()) {
+                                          context.pop();
+                                        } else {
+                                          context.go('/home');
+                                        }
+                                      } else {
+                                        final err = context
+                                            .read<CreatePostCubit>()
+                                            .state
+                                            .error;
+                                        AppSnackBar.error(
+                                          context,
+                                          err ?? 'Publish failed',
+                                        );
+                                      }
                                     } else {
-                                      context.go('/home');
+                                      context.read<CreatePostCubit>().next();
                                     }
-                                  } else {
-                                    final err = context.read<CreatePostCubit>().state.error;
-                                    AppSnackBar.error(
-                                      context,
-                                      err ?? 'Publish failed',
-                                    );
                                   }
-                                } else {
-                                  context.read<CreatePostCubit>().next();
-                                }
-                              }
-                            : null,
+                                : null,
+                      ),
+                    ],
                   );
                 },
               ),
@@ -216,7 +281,8 @@ class _WriteStepState extends State<_WriteStep> {
 
   @override
   Widget build(BuildContext context) {
-    final media = context.watch<CreatePostCubit>().state.mediaFiles;
+    final cubit = context.watch<CreatePostCubit>();
+    final media = cubit.state.mediaFiles;
     return ListView(
       padding: const EdgeInsets.fromLTRB(20, 8, 20, 24),
       children: [
@@ -256,14 +322,7 @@ class _WriteStepState extends State<_WriteStep> {
         ),
         const SizedBox(height: 16),
         GestureDetector(
-          onTap: () async {
-            final picker = ImagePicker();
-            // Instagram / Pinterest need image or video under form field `files`.
-            final file = await picker.pickMedia(imageQuality: 85);
-            if (file != null && context.mounted) {
-              context.read<CreatePostCubit>().addMediaFile(File(file.path));
-            }
-          },
+          onTap: () => _pickMedia(context),
           child: Container(
             height: media.isEmpty ? 140 : null,
             constraints: media.isEmpty ? null : const BoxConstraints(minHeight: 140),
@@ -274,78 +333,245 @@ class _WriteStepState extends State<_WriteStep> {
             ),
             child: media.isEmpty
                 ? const Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Icon(Icons.cloud_upload_outlined, size: 28, color: AppColors.gray400),
-                      SizedBox(height: 8),
-                      Text(
-                        'Upload media',
-                        style: TextStyle(
-                          fontSize: 14,
-                          fontWeight: FontWeight.w600,
-                          color: AppColors.gray700,
-                        ),
-                      ),
-                      SizedBox(height: 4),
-                      Text(
-                        'Required for Instagram · PNG, JPG or MP4',
-                        style: TextStyle(fontSize: 12, color: AppColors.gray400),
-                      ),
-                    ],
-                  )
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(Icons.cloud_upload_outlined, size: 28, color: AppColors.gray400),
+                SizedBox(height: 8),
+                Text(
+                  'Upload media',
+                  style: TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w600,
+                    color: AppColors.gray700,
+                  ),
+                ),
+                SizedBox(height: 4),
+                Text(
+                  'Up to 5 images or 1 video (30s) · max 90 MB',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(fontSize: 12, color: AppColors.gray400),
+                ),
+              ],
+            )
                 : Padding(
-                    padding: const EdgeInsets.all(12),
-                    child: Wrap(
-                      spacing: 8,
-                      runSpacing: 8,
+              padding: const EdgeInsets.all(12),
+              child: Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: [
+                  for (var i = 0; i < media.length; i++)
+                    Stack(
+                      clipBehavior: Clip.none,
                       children: [
-                        for (var i = 0; i < media.length; i++)
-                          Stack(
-                            clipBehavior: Clip.none,
-                            children: [
-                              ClipRRect(
-                                borderRadius: BorderRadius.circular(12),
-                                child: Image.file(
-                                  media[i],
-                                  width: 72,
-                                  height: 72,
-                                  fit: BoxFit.cover,
-                                ),
-                              ),
-                              Positioned(
-                                top: -6,
-                                right: -6,
-                                child: GestureDetector(
-                                  onTap: () =>
-                                      context.read<CreatePostCubit>().removeMediaAt(i),
-                                  child: Container(
-                                    padding: const EdgeInsets.all(2),
-                                    decoration: const BoxDecoration(
-                                      color: AppColors.gray900,
-                                      shape: BoxShape.circle,
-                                    ),
-                                    child: const Icon(Icons.close, size: 14, color: AppColors.white),
-                                  ),
-                                ),
-                              ),
-                            ],
-                          ),
-                        Container(
-                          width: 72,
-                          height: 72,
-                          decoration: BoxDecoration(
+                        GestureDetector(
+                          onTap: cubit.isVideoFile(media[i])
+                              ? () => openLocalMediaViewer(
+                                    context,
+                                    files: media,
+                                    initialIndex: i,
+                                    isVideo: true,
+                                  )
+                              : () => _openCropEditor(context, i),
+                          child: ClipRRect(
                             borderRadius: BorderRadius.circular(12),
-                            border: Border.all(color: AppColors.gray300),
+                            child: ColoredBox(
+                              color: Colors.black,
+                              child: cubit.isVideoFile(media[i])
+                                  ? LocalVideoPreview(
+                                file: media[i],
+                                width: 72,
+                                height: 72,
+                                borderRadius: 12,
+                                showControls: false,
+                                fit: BoxFit.contain,
+                              )
+                                  : Image.file(
+                                media[i],
+                                width: 72,
+                                height: 72,
+                                fit: BoxFit.cover,
+                              ),
+                            ),
                           ),
-                          child: const Icon(Icons.add, color: AppColors.gray500),
+                        ),
+                        if (!cubit.isVideoFile(media[i]))
+                          Positioned(
+                            left: 4,
+                            bottom: 4,
+                            child: Container(
+                              padding: const EdgeInsets.all(4),
+                              decoration: BoxDecoration(
+                                color: AppColors.gray900.withValues(alpha: 0.72),
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                              child: const Icon(
+                                Icons.crop_rounded,
+                                size: 12,
+                                color: AppColors.white,
+                              ),
+                            ),
+                          ),
+                        Positioned(
+                          top: -6,
+                          right: -6,
+                          child: GestureDetector(
+                            onTap: () =>
+                                context.read<CreatePostCubit>().removeMediaAt(i),
+                            child: Container(
+                              padding: const EdgeInsets.all(2),
+                              decoration: const BoxDecoration(
+                                color: AppColors.gray900,
+                                shape: BoxShape.circle,
+                              ),
+                              child: const Icon(Icons.close, size: 14, color: AppColors.white),
+                            ),
+                          ),
                         ),
                       ],
                     ),
-                  ),
+                  if (media.length < CreatePostCubit.maxImages &&
+                      !cubit.hasVideo)
+                    Container(
+                      width: 72,
+                      height: 72,
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: AppColors.gray300),
+                      ),
+                      child: const Icon(Icons.add, color: AppColors.gray500),
+                    ),
+                ],
+              ),
+            ),
           ),
         ),
+        if (media.isNotEmpty && !cubit.hasVideo) ...[
+          const SizedBox(height: 14),
+          Row(
+            children: [
+              const Text(
+                'Aspect ratio',
+                style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                  color: AppColors.gray500,
+                ),
+              ),
+              const SizedBox(width: 8),
+              const Expanded(
+                child: Text(
+                  '1:1 or 4:5 for all · tap photo to crop',
+                  style: TextStyle(fontSize: 11, color: AppColors.gray400),
+                ),
+              ),
+              if (cubit.state.mediaProcessing)
+                const SizedBox(
+                  width: 14,
+                  height: 14,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: Row(
+              children: [
+                for (final preset in MediaAspectRatioPreset.values) ...[
+                  Padding(
+                    padding: const EdgeInsets.only(right: 8),
+                    child: _AspectRatioChip(
+                      preset: preset,
+                      selected: cubit.state.mediaAspectRatio == preset,
+                      enabled: !cubit.state.mediaProcessing,
+                      onTap: () => context
+                          .read<CreatePostCubit>()
+                          .setMediaAspectRatio(preset),
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ),
+        ],
       ],
     );
+  }
+
+  Future<void> _pickMedia(BuildContext context) async {
+    final cubit = context.read<CreatePostCubit>();
+    final choice = await showModalBottomSheet<String>(
+      context: context,
+      backgroundColor: AppColors.white,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(18)),
+      ),
+      builder: (ctx) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              leading: const Icon(Icons.photo_library_outlined),
+              title: const Text('Photos (up to 5)'),
+              onTap: () => Navigator.pop(ctx, 'images'),
+            ),
+            ListTile(
+              leading: const Icon(Icons.videocam_outlined),
+              title: const Text('Video (max 30s · 90 MB)'),
+              onTap: () => Navigator.pop(ctx, 'video'),
+            ),
+          ],
+        ),
+      ),
+    );
+    if (choice == null || !context.mounted) return;
+
+    final picker = ImagePicker();
+    if (choice == 'images') {
+      final remaining = CreatePostCubit.maxImages - cubit.state.mediaFiles.length;
+      if (remaining <= 0 || cubit.hasVideo) {
+        AppSnackBar.error(
+          context,
+          cubit.hasVideo
+              ? 'Remove the video first to add images.'
+              : 'Maximum ${CreatePostCubit.maxImages} images allowed.',
+        );
+        return;
+      }
+      final picked = await picker.pickMultiImage(
+        imageQuality: 85,
+        limit: remaining,
+      );
+      if (picked.isEmpty || !context.mounted) return;
+      final err = await cubit.addMediaFiles(
+        picked.map((x) => File(x.path)).toList(),
+      );
+      if (err != null && context.mounted) AppSnackBar.error(context, err);
+      return;
+    }
+
+    final video = await picker.pickVideo(
+      source: ImageSource.gallery,
+      maxDuration: CreatePostCubit.maxVideoDuration,
+    );
+    if (video == null || !context.mounted) return;
+    final err = await cubit.addMediaFiles([File(video.path)], asVideo: true);
+    if (err != null && context.mounted) AppSnackBar.error(context, err);
+  }
+
+  Future<void> _openCropEditor(BuildContext context, int index) async {
+    final cubit = context.read<CreatePostCubit>();
+    if (cubit.state.mediaProcessing) return;
+
+    final cropped = await openImageCropEditor(
+      context,
+      sourceFile: cubit.sourceFileForCropAt(index),
+      aspectRatio: cubit.state.mediaAspectRatio.ratio,
+      ratioLabel: cubit.state.mediaAspectRatio.label,
+    );
+    if (cropped != null && context.mounted) {
+      cubit.updateMediaCropAt(index, cropped);
+    }
   }
 
   InputDecoration _fieldDecoration(String hint) {
@@ -365,6 +591,72 @@ class _WriteStepState extends State<_WriteStep> {
       focusedBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(14),
         borderSide: const BorderSide(color: AppColors.primary, width: 1.5),
+      ),
+    );
+  }
+}
+
+class _AspectRatioChip extends StatelessWidget {
+  const _AspectRatioChip({
+    required this.preset,
+    required this.selected,
+    required this.enabled,
+    required this.onTap,
+  });
+
+  final MediaAspectRatioPreset preset;
+  final bool selected;
+  final bool enabled;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final ratio = preset.ratio;
+    final frameW = ratio >= 1 ? 22.0 : 16.0;
+    final frameH = (frameW / ratio).clamp(12.0, 26.0);
+
+    return GestureDetector(
+      onTap: enabled ? onTap : null,
+      child: AnimatedOpacity(
+        opacity: enabled ? 1 : 0.55,
+        duration: const Duration(milliseconds: 150),
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 180),
+          padding: const EdgeInsets.fromLTRB(10, 8, 12, 8),
+          decoration: BoxDecoration(
+            color: selected ? AppColors.blue50 : AppColors.white,
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(
+              color: selected ? AppColors.primary : AppColors.gray200,
+              width: selected ? 1.5 : 1,
+            ),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: frameW,
+                height: frameH,
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(3),
+                  border: Border.all(
+                    color: selected ? AppColors.primary : AppColors.gray400,
+                    width: 1.4,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 8),
+              Text(
+                preset.label,
+                style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w700,
+                  color: selected ? AppColors.primaryDark : AppColors.gray700,
+                ),
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }
@@ -408,6 +700,8 @@ class _PlatformsStep extends StatelessWidget {
         else
           ...platforms.map((p) {
             final isOn = selected.contains(p.id);
+            final creditLabel =
+                p.creditCost <= 0 ? 'Free' : '${p.creditCost} cr';
             return Padding(
               padding: const EdgeInsets.only(bottom: 10),
               child: GestureDetector(
@@ -454,6 +748,40 @@ class _PlatformsStep extends StatelessWidget {
                           ],
                         ),
                       ),
+                      const SizedBox(width: 8),
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 8,
+                          vertical: 4,
+                        ),
+                        decoration: BoxDecoration(
+                          color: isOn ? AppColors.white : AppColors.blue50,
+                          borderRadius: BorderRadius.circular(999),
+                          border: Border.all(
+                            color: AppColors.primary.withValues(alpha: 0.18),
+                          ),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            const Icon(
+                              Icons.bolt_rounded,
+                              size: 12,
+                              color: AppColors.primary,
+                            ),
+                            const SizedBox(width: 2),
+                            Text(
+                              creditLabel,
+                              style: const TextStyle(
+                                fontSize: 11,
+                                fontWeight: FontWeight.w700,
+                                color: AppColors.primaryDark,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(width: 8),
                       Icon(
                         isOn ? Icons.check_circle : Icons.circle_outlined,
                         color: isOn ? AppColors.primary : AppColors.gray300,
@@ -584,14 +912,14 @@ class _ScheduleStep extends StatelessWidget {
               if (picked != null && context.mounted) {
                 final cur = state.scheduledAt ?? now;
                 context.read<CreatePostCubit>().setScheduledAt(
-                      DateTime(
-                        picked.year,
-                        picked.month,
-                        picked.day,
-                        cur.hour,
-                        cur.minute,
-                      ),
-                    );
+                  DateTime(
+                    picked.year,
+                    picked.month,
+                    picked.day,
+                    cur.hour,
+                    cur.minute,
+                  ),
+                );
               }
             },
           ),
@@ -612,14 +940,14 @@ class _ScheduleStep extends StatelessWidget {
               );
               if (picked != null && context.mounted) {
                 context.read<CreatePostCubit>().setScheduledAt(
-                      DateTime(
-                        cur.year,
-                        cur.month,
-                        cur.day,
-                        picked.hour,
-                        picked.minute,
-                      ),
-                    );
+                  DateTime(
+                    cur.year,
+                    cur.month,
+                    cur.day,
+                    picked.hour,
+                    picked.minute,
+                  ),
+                );
               }
             },
           ),
@@ -723,6 +1051,14 @@ class _PreviewStep extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final state = context.watch<CreatePostCubit>().state;
+    final platforms = state.selectedPlatforms.toList();
+    final scheduleLabel = switch (state.postStatus) {
+      CreatePostStatus.draft => 'Draft',
+      CreatePostStatus.publishing => 'Publish now',
+      CreatePostStatus.scheduled =>
+      '${state.scheduleDateLabel} · ${state.scheduleTimeLabel}',
+    };
+
     return ListView(
       padding: const EdgeInsets.fromLTRB(20, 8, 20, 24),
       children: [
@@ -731,94 +1067,89 @@ class _PreviewStep extends StatelessWidget {
           style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700, color: AppColors.gray900),
         ),
         const SizedBox(height: 6),
-        const Text(
-          'Review how your post will look before publishing.',
-          style: TextStyle(fontSize: 13, color: AppColors.gray500),
+        Text(
+          platforms.isEmpty
+              ? 'Select platforms to preview how each post will look.'
+              : 'Each card mirrors that platform\'s real feed layout.',
+          style: const TextStyle(fontSize: 13, color: AppColors.gray500),
         ),
         const SizedBox(height: 16),
-        Container(
-          decoration: BoxDecoration(
-            color: AppColors.white,
-            borderRadius: BorderRadius.circular(18),
-            border: Border.all(color: AppColors.gray200),
-            boxShadow: [
-              BoxShadow(
-                color: AppColors.black.withValues(alpha: 0.04),
-                blurRadius: 12,
-                offset: const Offset(0, 4),
+        if (platforms.isEmpty)
+          Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: AppColors.gray50,
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: AppColors.gray200),
+            ),
+            child: const Text(
+              'No platforms selected yet. Go back and choose where to publish.',
+              style: TextStyle(fontSize: 13, color: AppColors.gray500, height: 1.4),
+            ),
+          )
+        else
+          ...platforms.map(
+                (id) => Padding(
+              padding: const EdgeInsets.only(bottom: 14),
+              child: PlatformPostPreviewCard(
+                platformId: id,
+                platformName: AppData.platformName(id),
+                accountLabel: _accountLabelFor(state, id),
+                accountHandle: _accountHandleFor(state, id),
+                title: state.title,
+                caption: state.caption,
+                mediaFiles: state.mediaFiles,
+                mediaIsVideo: state.mediaIsVideo,
+                scheduleLabel: scheduleLabel,
               ),
-            ],
+            ),
           ),
-          clipBehavior: Clip.antiAlias,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              if (state.mediaFiles.isNotEmpty)
-                Image.file(
-                  state.mediaFiles.first,
-                  height: 180,
-                  width: double.infinity,
-                  fit: BoxFit.cover,
-                )
-              else
-                CachedNetworkImage(
-                  imageUrl: AppData.previewImageUrl,
-                  height: 180,
-                  width: double.infinity,
-                  fit: BoxFit.cover,
-                  placeholder: (_, __) => Container(height: 180, color: AppColors.gray100),
-                  errorWidget: (_, __, ___) => Container(height: 180, color: AppColors.gray100),
-                ),
-              Padding(
-                padding: const EdgeInsets.all(16),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      state.title.isEmpty ? 'Untitled post' : state.title,
-                      style: const TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.w700,
-                        color: AppColors.gray900,
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    Text(
-                      state.caption.isEmpty ? 'No caption yet.' : state.caption,
-                      style: const TextStyle(fontSize: 13, color: AppColors.gray500, height: 1.45),
-                    ),
-                    const SizedBox(height: 14),
-                    Row(
-                      children: [
-                        ...state.selectedPlatforms.map(
-                          (id) => Padding(
-                            padding: const EdgeInsets.only(right: 6),
-                            child: PlatformIcon(id: id, size: 24),
-                          ),
-                        ),
-                        const Spacer(),
-                        Text(
-                          switch (state.postStatus) {
-                            CreatePostStatus.draft => 'Draft',
-                            CreatePostStatus.publishing => 'Publish now',
-                            CreatePostStatus.scheduled =>
-                              '${state.scheduleDateLabel} · ${state.scheduleTimeLabel}',
-                          },
-                          style: const TextStyle(
-                            fontSize: 11,
-                            fontWeight: FontWeight.w600,
-                            color: AppColors.primary,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-        ),
       ],
     );
+  }
+
+  static String _accountLabelFor(CreatePostState state, String platformId) {
+    String? nameFrom(List<NamedResource> resources, String? selectedId) {
+      if (selectedId == null || selectedId.isEmpty) return null;
+      for (final r in resources) {
+        if (r.id == selectedId) return r.name;
+      }
+      return null;
+    }
+
+    final resourceName = switch (platformId) {
+      'facebook' => nameFrom(state.facebookPages, state.facebookPageId),
+      'instagram' =>
+          nameFrom(state.instagramAccounts, state.instagramId) ??
+              nameFrom(state.facebookPages, state.facebookPageId),
+      'pinterest' => nameFrom(state.pinterestBoards, state.pinterestBoardId),
+      'youtube' => nameFrom(state.youtubeChannels, state.youtubeChannelId),
+      'google' =>
+          nameFrom(state.googleProfiles, state.googleBusinessProfileId),
+      _ => null,
+    };
+    if (resourceName != null && resourceName.isNotEmpty) return resourceName;
+
+    for (final p in state.availablePlatforms) {
+      if (p.id == platformId && p.accounts.isNotEmpty) {
+        return p.accounts.first;
+      }
+    }
+
+    final linked = SocialRepository()
+        .accountsForPlatform(platformId, state.connectedAccounts);
+    if (linked.isNotEmpty) return linked.first.previewLabel;
+
+    return 'Your account';
+  }
+
+  static String _accountHandleFor(CreatePostState state, String platformId) {
+    final linked = SocialRepository()
+        .accountsForPlatform(platformId, state.connectedAccounts);
+    if (linked.isNotEmpty) return linked.first.previewHandle;
+
+    final label = _accountLabelFor(state, platformId);
+    if (label == 'Your account') return 'account';
+    return label.replaceFirst(RegExp(r'^@'), '');
   }
 }

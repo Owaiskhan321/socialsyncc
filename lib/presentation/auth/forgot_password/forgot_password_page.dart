@@ -7,6 +7,7 @@ import '../../../core/theme/app_colors.dart';
 import '../../../core/utils/keyboard_dismiss.dart';
 import '../../../core/widgets/app_button.dart';
 import '../../../core/widgets/app_input.dart';
+import '../../../navigation/app_launch_transition.dart';
 import 'forgot_password_presenter.dart';
 
 class ForgotPasswordPage extends StatefulWidget {
@@ -45,8 +46,9 @@ class _ForgotPasswordPageState extends State<ForgotPasswordPage>
   void goOtpVerify(String email) {
     if (!mounted) return;
     AppLogger.navigation('forgot-password', 'otp-verify');
-    context.push(
+    context.pushFromSource(
       '/otp-verify?email=${Uri.encodeComponent(email)}&purpose=reset',
+      borderRadius: 20,
     );
   }
 

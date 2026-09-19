@@ -23,6 +23,8 @@ abstract final class ApiConstants {
   static const String socialAccounts = 'social-accounts';
   static const String oauthConnect = 'oauth/connect';
   static const String oauthDisconnect = 'oauth/disconnect';
+  static const String platforms = 'platforms';
+  static const String wallet = 'wallet';
 
   // Platform resources
   static const String facebookPages = 'meta/facebook-pages';

@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:equatable/equatable.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
+import '../../../core/events/post_status_bus.dart';
 import '../../../core/events/posts_refresh_bus.dart';
 import '../../../core/logger/app_logger.dart';
 import '../../../core/network/api_exception.dart';
@@ -78,19 +79,49 @@ class PostDetailCubit extends Cubit<PostDetailState> {
   })  : _postId = postId,
         _repo = repository ?? PostsRepository(),
         super(const PostDetailState()) {
+    _statusSub = PostStatusBus.instance.stream.listen(_onPostStatus);
     load();
   }
 
   final String _postId;
   final PostsRepository _repo;
+  StreamSubscription<PostStatusUpdate>? _statusSub;
   Timer? _pollTimer;
   int _pollAttempts = 0;
-  static const _maxPollAttempts = 20; // ~40s at 2s interval
+  static const _maxPollAttempts = 20; // ~40s at 2s interval (fallback)
 
   @override
   Future<void> close() {
+    _statusSub?.cancel();
     _stopPolling();
     return super.close();
+  }
+
+  void _onPostStatus(PostStatusUpdate update) {
+    if (isClosed || update.postId != _postId || update.status == null) return;
+    final current = state.post;
+    if (current == null) return;
+
+    final wasPublishing = current.status == PostStatus.publishing;
+    final next = current.copyWith(status: update.status);
+    emit(
+      state.copyWith(
+        post: next,
+        statusBecamePublished:
+            wasPublishing &&
+                (update.status == PostStatus.published ||
+                    update.status == PostStatus.partial),
+      ),
+    );
+
+    if (update.status == PostStatus.published ||
+        update.status == PostStatus.partial ||
+        update.status == PostStatus.failed) {
+      _stopPolling();
+      PostsRefreshBus.instance.ping();
+    } else if (update.status != PostStatus.publishing) {
+      _stopPolling();
+    }
   }
 
   void _stopPolling() {
@@ -132,10 +163,12 @@ class PostDetailCubit extends Cubit<PostDetailState> {
         state.copyWith(
           post: post,
           statusBecamePublished: wasPublishing &&
-              post.status == PostStatus.published,
+              (post.status == PostStatus.published ||
+                  post.status == PostStatus.partial),
         ),
       );
       if (post.status == PostStatus.published ||
+          post.status == PostStatus.partial ||
           post.status == PostStatus.failed) {
         _stopPolling();
         PostsRefreshBus.instance.ping();
@@ -212,6 +245,8 @@ class PostDetailCubit extends Cubit<PostDetailState> {
             status: PostStatus.publishing,
             publishAt: current.publishAt,
             thumbnail: current.thumbnail,
+            mediaUrls: current.mediaUrls,
+            mediaIsVideo: current.mediaIsVideo,
             scheduledDate: current.scheduledDate,
           );
 
@@ -220,7 +255,8 @@ class PostDetailCubit extends Cubit<PostDetailState> {
           publishing: false,
           justPublished: true,
           post: next,
-          statusBecamePublished: next.status == PostStatus.published,
+          statusBecamePublished: next.status == PostStatus.published ||
+              next.status == PostStatus.partial,
         ),
       );
       _maybeStartPolling(next);

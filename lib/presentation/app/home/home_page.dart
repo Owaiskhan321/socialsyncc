@@ -1,13 +1,15 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
-import 'package:go_router/go_router.dart';
 
 import '../../../core/logger/app_logger.dart';
 import '../../../core/theme/app_colors.dart';
+import '../../../core/widgets/app_video_player.dart';
 import '../../../core/widgets/platform_icon.dart';
+import '../../../core/widgets/platform_status_icons.dart';
 import '../../../core/widgets/status_badge.dart';
 import '../../../data/models/models.dart';
+import '../../../navigation/app_launch_transition.dart';
 import '../../shell/tab_cubit.dart';
 import 'home_cubit.dart';
 
@@ -39,13 +41,14 @@ class _HomeView extends StatelessWidget {
                 _TopBar(
                   greeting: state.greeting,
                   name: state.name,
-                  onBell: () {
+                  credits: state.totalCredits,
+                  onBell: (src) {
                     AppLogger.navigation('home', 'notifications');
-                    context.push('/notifications');
+                    src.pushFromSource('/notifications', borderRadius: 20);
                   },
-                  onAvatar: () {
+                  onAvatar: (src) {
                     AppLogger.navigation('home', 'profile');
-                    context.push('/profile');
+                    src.pushFromSource('/profile', borderRadius: 22);
                   },
                 ),
                 Expanded(
@@ -80,18 +83,21 @@ class _HomeView extends StatelessWidget {
                               _SectionHeader(
                                 title: 'Platforms',
                                 action: 'Manage',
-                                onAction: () {
+                                onAction: (src) {
                                   AppLogger.navigation('home', 'platforms');
-                                  context.push('/platforms');
+                                  src.pushFromSource('/platforms', borderRadius: 12);
                                 },
                               ),
                               const SizedBox(height: 12),
-                              _PlatformsRow(ids: state.platformIds).animate().fadeIn(delay: 80.ms),
+                              _PlatformsRow(
+                                ids: state.platformIds,
+                                platforms: state.platforms,
+                              ).animate().fadeIn(delay: 80.ms),
                               const SizedBox(height: 24),
                               _SectionHeader(
                                 title: 'Recent Posts',
                                 action: 'View all',
-                                onAction: () {
+                                onAction: (_) {
                                   AppLogger.event('home_view_posts');
                                   context.read<TabCubit>().setTab(1);
                                 },
@@ -128,9 +134,9 @@ class _HomeView extends StatelessWidget {
                               ),
                               const SizedBox(height: 12),
                               _QuickActions(
-                                onCreate: () {
+                                onCreate: (src) {
                                   AppLogger.navigation('home', 'create');
-                                  context.push('/create');
+                                  src.pushFromSource('/create', borderRadius: 16);
                                 },
                                 onCalendar: () {
                                   AppLogger.event('home_calendar');
@@ -158,14 +164,16 @@ class _TopBar extends StatelessWidget {
   const _TopBar({
     required this.greeting,
     required this.name,
+    required this.credits,
     required this.onBell,
     required this.onAvatar,
   });
 
   final String greeting;
   final String name;
-  final VoidCallback onBell;
-  final VoidCallback onAvatar;
+  final int credits;
+  final ValueChanged<BuildContext> onBell;
+  final ValueChanged<BuildContext> onAvatar;
 
   @override
   Widget build(BuildContext context) {
@@ -202,30 +210,68 @@ class _TopBar extends StatelessWidget {
               ],
             ),
           ),
-          GestureDetector(
-            onTap: onBell,
-            child: Container(
-              width: 40,
-              height: 40,
-              decoration: BoxDecoration(
-                color: AppColors.gray50,
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: AppColors.gray100),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+            decoration: BoxDecoration(
+              color: AppColors.blue50,
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(
+                color: AppColors.primary.withValues(alpha: 0.18),
               ),
-              child: const Icon(Icons.notifications_outlined, size: 20, color: AppColors.gray700),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Icon(
+                  Icons.bolt_rounded,
+                  size: 16,
+                  color: AppColors.primary,
+                ),
+                const SizedBox(width: 4),
+                Text(
+                  '$credits',
+                  style: const TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w800,
+                    color: AppColors.primaryDark,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 8),
+          Builder(
+            builder: (bellCtx) => GestureDetector(
+              onTap: () => onBell(bellCtx),
+              child: Container(
+                width: 40,
+                height: 40,
+                decoration: BoxDecoration(
+                  color: AppColors.gray50,
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: AppColors.gray100),
+                ),
+                child: const Icon(
+                  Icons.notifications_outlined,
+                  size: 20,
+                  color: AppColors.gray700,
+                ),
+              ),
             ),
           ),
           const SizedBox(width: 10),
-          GestureDetector(
-            onTap: onAvatar,
-            child: CircleAvatar(
-              radius: 20,
-              backgroundColor: AppColors.blue100,
-              child: Text(
-                name.isNotEmpty ? name[0].toUpperCase() : '?',
-                style: const TextStyle(
-                  fontWeight: FontWeight.w700,
-                  color: AppColors.primary,
+          Builder(
+            builder: (avatarCtx) => GestureDetector(
+              onTap: () => onAvatar(avatarCtx),
+              child: CircleAvatar(
+                radius: 20,
+                backgroundColor: AppColors.blue100,
+                child: Text(
+                  name.isNotEmpty ? name[0].toUpperCase() : '?',
+                  style: const TextStyle(
+                    fontWeight: FontWeight.w700,
+                    color: AppColors.primary,
+                  ),
                 ),
               ),
             ),
@@ -330,7 +376,7 @@ class _SectionHeader extends StatelessWidget {
 
   final String title;
   final String action;
-  final VoidCallback onAction;
+  final ValueChanged<BuildContext> onAction;
 
   @override
   Widget build(BuildContext context) {
@@ -342,11 +388,13 @@ class _SectionHeader extends StatelessWidget {
             style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: AppColors.gray900),
           ),
         ),
-        GestureDetector(
-          onTap: onAction,
-          child: Text(
-            action,
-            style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: AppColors.primary),
+        Builder(
+          builder: (actionCtx) => GestureDetector(
+            onTap: () => onAction(actionCtx),
+            child: Text(
+              action,
+              style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: AppColors.primary),
+            ),
           ),
         ),
       ],
@@ -355,26 +403,77 @@ class _SectionHeader extends StatelessWidget {
 }
 
 class _PlatformsRow extends StatelessWidget {
-  const _PlatformsRow({required this.ids});
+  const _PlatformsRow({
+    required this.ids,
+    this.platforms = const [],
+  });
 
   final List<String> ids;
+  final List<PlatformModel> platforms;
 
   @override
   Widget build(BuildContext context) {
+    final items = platforms.isNotEmpty
+        ? platforms
+        : ids
+            .map(
+              (id) => PlatformModel(
+                id: id,
+                name: id,
+                color: 0xFF64748B,
+                accounts: const [],
+                connected: true,
+              ),
+            )
+            .toList();
+
+    if (items.isEmpty) {
+      return const Padding(
+        padding: EdgeInsets.symmetric(vertical: 8),
+        child: Text(
+          'No platforms connected yet',
+          style: TextStyle(color: AppColors.gray400, fontWeight: FontWeight.w500),
+        ),
+      );
+    }
+
     return SizedBox(
-      height: 56,
+      height: 64,
       child: ListView.separated(
         scrollDirection: Axis.horizontal,
-        itemCount: ids.length,
+        itemCount: items.length,
         separatorBuilder: (_, _) => const SizedBox(width: 10),
         itemBuilder: (_, i) {
-          final id = ids[i];
-          return GestureDetector(
-            onTap: () {
-              AppLogger.navigation('home', 'platform_detail');
-              context.push('/platforms/$id');
-            },
-            child: PlatformIcon(id: id, size: 48),
+          final p = items[i];
+          return Builder(
+            builder: (itemCtx) => GestureDetector(
+              onTap: () {
+                AppLogger.navigation('home', 'platform_detail');
+                itemCtx.pushFromSource(
+                  '/platforms/${p.id}',
+                  borderRadius: 24,
+                );
+              },
+              child: Stack(
+                clipBehavior: Clip.none,
+                children: [
+                  PlatformIcon(id: p.id, size: 48),
+                  Positioned(
+                    right: -2,
+                    top: -2,
+                    child: Container(
+                      width: 12,
+                      height: 12,
+                      decoration: BoxDecoration(
+                        color: AppColors.success,
+                        shape: BoxShape.circle,
+                        border: Border.all(color: AppColors.white, width: 2),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
           );
         },
       ),
@@ -390,7 +489,12 @@ class _PostCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return GestureDetector(
-      onTap: post.id.isEmpty ? null : () => context.push('/posts/${post.id}'),
+      onTap: post.id.isEmpty
+          ? null
+          : () => context.pushFromSource(
+                '/posts/${post.id}',
+                borderRadius: 16,
+              ),
       child: Container(
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
@@ -398,83 +502,130 @@ class _PostCard extends StatelessWidget {
         borderRadius: BorderRadius.circular(16),
         border: Border.all(color: AppColors.gray100),
       ),
-      child: Row(
+      child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          ClipRRect(
-            borderRadius: BorderRadius.circular(12),
-            child: post.thumbnail != null && post.thumbnail!.startsWith('http')
-                ? Image.network(
-                    post.thumbnail!,
-                    width: 56,
-                    height: 56,
-                    fit: BoxFit.cover,
-                    errorBuilder: (_, _, _) => Container(
-                      width: 56,
-                      height: 56,
-                      color: AppColors.gray100,
-                      child: const Icon(Icons.image_outlined, color: AppColors.gray400),
-                    ),
-                  )
-                : Container(
-                    width: 56,
-                    height: 56,
-                    color: AppColors.gray100,
-                    child: const Icon(Icons.image_outlined, color: AppColors.gray400),
-                  ),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              ClipRRect(
+                borderRadius: BorderRadius.circular(12),
+                child: Stack(
                   children: [
-                    Expanded(
-                      child: Text(
-                        post.title,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(
-                          fontSize: 14,
-                          fontWeight: FontWeight.w600,
-                          color: AppColors.gray900,
-                        ),
-                      ),
-                    ),
-                    StatusBadge(status: post.status),
-                  ],
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  post.caption,
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(fontSize: 12, color: AppColors.gray500, height: 1.35),
-                ),
-                const SizedBox(height: 8),
-                Row(
-                  children: [
-                    ...post.platforms.take(4).map(
-                          (id) => Padding(
-                            padding: const EdgeInsets.only(right: 4),
-                            child: PlatformIcon(id: id, size: 18),
+                    post.thumbnail != null && post.thumbnail!.startsWith('http')
+                        ? (post.mediaIsVideo
+                            ? const VideoMediaPlaceholder(
+                                width: 56,
+                                height: 56,
+                                borderRadius: 12,
+                              )
+                            : Image.network(
+                                post.thumbnail!,
+                                width: 56,
+                                height: 56,
+                                fit: BoxFit.cover,
+                                errorBuilder: (_, _, _) => Container(
+                                  width: 56,
+                                  height: 56,
+                                  color: AppColors.gray100,
+                                  child: const Icon(
+                                    Icons.image_outlined,
+                                    color: AppColors.gray400,
+                                  ),
+                                ),
+                              ))
+                        : Container(
+                            width: 56,
+                            height: 56,
+                            color: AppColors.gray100,
+                            child: const Icon(
+                              Icons.image_outlined,
+                              color: AppColors.gray400,
+                            ),
+                          ),
+                    if (!post.mediaIsVideo && post.displayMediaUrls.length > 1)
+                      Positioned(
+                        right: 4,
+                        bottom: 4,
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 5,
+                            vertical: 2,
+                          ),
+                          decoration: BoxDecoration(
+                            color: Colors.black.withValues(alpha: 0.55),
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: Text(
+                            '${post.displayMediaUrls.length}',
+                            style: const TextStyle(
+                              fontSize: 10,
+                              fontWeight: FontWeight.w700,
+                              color: Colors.white,
+                            ),
                           ),
                         ),
-                    const Spacer(),
-                    if (post.publishAt != null)
-                      Text(
-                        post.publishAt!,
-                        style: const TextStyle(
-                          fontSize: 11,
-                          color: AppColors.gray400,
-                          fontWeight: FontWeight.w500,
-                        ),
                       ),
                   ],
                 ),
-              ],
-            ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            post.title,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                              fontSize: 14,
+                              fontWeight: FontWeight.w600,
+                              color: AppColors.gray900,
+                            ),
+                          ),
+                        ),
+                        StatusBadge(status: post.status),
+                      ],
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      post.caption,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        fontSize: 12,
+                        color: AppColors.gray500,
+                        height: 1.35,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          Row(
+            children: [
+              PlatformStatusIcons(
+                post: post,
+                iconSize: 18,
+                spacing: 4,
+              ),
+              const Spacer(),
+              if (post.publishAt != null)
+                Text(
+                  post.publishAt!,
+                  style: const TextStyle(
+                    fontSize: 11,
+                    color: AppColors.gray400,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+            ],
           ),
         ],
       ),
@@ -490,71 +641,103 @@ class _QuickActions extends StatelessWidget {
     required this.onAnalytics,
   });
 
-  final VoidCallback onCreate;
+  final ValueChanged<BuildContext> onCreate;
   final VoidCallback onCalendar;
   final VoidCallback onAnalytics;
 
   @override
   Widget build(BuildContext context) {
-    final actions = <({IconData icon, String label, Color color, Color bg, VoidCallback onTap})>[
-      (icon: Icons.edit_outlined, label: 'New Post', color: AppColors.primary, bg: AppColors.blue50, onTap: onCreate),
-      (
-        icon: Icons.calendar_today_outlined,
-        label: 'Calendar',
-        color: AppColors.warning,
-        bg: AppColors.amber50,
-        onTap: onCalendar
-      ),
-      (
-        icon: Icons.bar_chart_rounded,
-        label: 'Analytics',
-        color: AppColors.purple,
-        bg: AppColors.purple50,
-        onTap: onAnalytics
-      ),
-    ];
     return Row(
       children: [
-        for (var i = 0; i < actions.length; i++)
-          Expanded(
-            child: Padding(
-              padding: EdgeInsets.only(right: i == actions.length - 1 ? 0 : 8),
-              child: GestureDetector(
-                onTap: actions[i].onTap,
-                child: Container(
-                  padding: const EdgeInsets.symmetric(vertical: 14),
-                  decoration: BoxDecoration(
-                    color: AppColors.white,
-                    borderRadius: BorderRadius.circular(14),
-                    border: Border.all(color: AppColors.gray100),
-                  ),
-                  child: Column(
-                    children: [
-                      Container(
-                        width: 36,
-                        height: 36,
-                        decoration: BoxDecoration(
-                          color: actions[i].bg,
-                          borderRadius: BorderRadius.circular(10),
-                        ),
-                        child: Icon(actions[i].icon, size: 18, color: actions[i].color),
-                      ),
-                      const SizedBox(height: 8),
-                      Text(
-                        actions[i].label,
-                        style: const TextStyle(
-                          fontSize: 12,
-                          fontWeight: FontWeight.w600,
-                          color: AppColors.gray700,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
+        Expanded(
+          child: Padding(
+            padding: const EdgeInsets.only(right: 8),
+            child: Builder(
+              builder: (src) => _QuickActionTile(
+                icon: Icons.edit_outlined,
+                label: 'New Post',
+                color: AppColors.primary,
+                bg: AppColors.blue50,
+                onTap: () => onCreate(src),
               ),
             ),
           ),
+        ),
+        Expanded(
+          child: Padding(
+            padding: const EdgeInsets.only(right: 8),
+            child: _QuickActionTile(
+              icon: Icons.calendar_today_outlined,
+              label: 'Calendar',
+              color: AppColors.warning,
+              bg: AppColors.amber50,
+              onTap: onCalendar,
+            ),
+          ),
+        ),
+        Expanded(
+          child: _QuickActionTile(
+            icon: Icons.bar_chart_rounded,
+            label: 'Analytics',
+            color: AppColors.purple,
+            bg: AppColors.purple50,
+            onTap: onAnalytics,
+          ),
+        ),
       ],
+    );
+  }
+}
+
+class _QuickActionTile extends StatelessWidget {
+  const _QuickActionTile({
+    required this.icon,
+    required this.label,
+    required this.color,
+    required this.bg,
+    required this.onTap,
+  });
+
+  final IconData icon;
+  final String label;
+  final Color color;
+  final Color bg;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(vertical: 14),
+        decoration: BoxDecoration(
+          color: AppColors.white,
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: AppColors.gray100),
+        ),
+        child: Column(
+          children: [
+            Container(
+              width: 36,
+              height: 36,
+              decoration: BoxDecoration(
+                color: bg,
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: Icon(icon, size: 18, color: color),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              label,
+              style: const TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+                color: AppColors.gray700,
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }

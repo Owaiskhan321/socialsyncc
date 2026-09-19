@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:equatable/equatable.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
+import '../../../core/events/post_status_bus.dart';
 import '../../../core/events/posts_refresh_bus.dart';
 import '../../../core/logger/app_logger.dart';
 import '../../../core/network/api_exception.dart';
@@ -25,7 +26,10 @@ class HomeState extends Equatable {
     this.published = 0,
     this.drafts = 0,
     this.platformIds = const [],
+    this.platforms = const [],
     this.recentPosts = const [],
+    this.credits = 0,
+    this.freeCredits = 0,
     this.error,
   });
 
@@ -38,8 +42,13 @@ class HomeState extends Equatable {
   final int published;
   final int drafts;
   final List<String> platformIds;
+  final List<PlatformModel> platforms;
   final List<PostModel> recentPosts;
+  final int credits;
+  final int freeCredits;
   final String? error;
+
+  int get totalCredits => credits + freeCredits;
 
   HomeState copyWith({
     bool? loading,
@@ -51,7 +60,10 @@ class HomeState extends Equatable {
     int? published,
     int? drafts,
     List<String>? platformIds,
+    List<PlatformModel>? platforms,
     List<PostModel>? recentPosts,
+    int? credits,
+    int? freeCredits,
     String? error,
     bool clearError = false,
   }) =>
@@ -65,7 +77,10 @@ class HomeState extends Equatable {
         published: published ?? this.published,
         drafts: drafts ?? this.drafts,
         platformIds: platformIds ?? this.platformIds,
+        platforms: platforms ?? this.platforms,
         recentPosts: recentPosts ?? this.recentPosts,
+        credits: credits ?? this.credits,
+        freeCredits: freeCredits ?? this.freeCredits,
         error: clearError ? null : (error ?? this.error),
       );
 
@@ -80,7 +95,10 @@ class HomeState extends Equatable {
         published,
         drafts,
         platformIds,
+        platforms,
         recentPosts,
+        credits,
+        freeCredits,
         error,
       ];
 }
@@ -90,6 +108,7 @@ class HomeCubit extends Cubit<HomeState> {
   final SocialRepository _socialRepo;
   final UserRepository _userRepo;
   StreamSubscription<void>? _postsRefreshSub;
+  StreamSubscription<PostStatusUpdate>? _statusSub;
 
   HomeCubit({
     PostsRepository? postsRepo,
@@ -102,25 +121,54 @@ class HomeCubit extends Cubit<HomeState> {
     load();
     _postsRefreshSub =
         PostsRefreshBus.instance.stream.listen((_) => refreshPostsSilently());
+    _statusSub = PostStatusBus.instance.stream.listen(_onPostStatus);
   }
 
   @override
   Future<void> close() {
     _postsRefreshSub?.cancel();
+    _statusSub?.cancel();
     return super.close();
+  }
+
+  void _onPostStatus(PostStatusUpdate update) {
+    if (isClosed || update.status == null) return;
+    final recent = state.recentPosts;
+    final i = recent.indexWhere((p) => p.id == update.postId);
+    if (i >= 0 && recent[i].status != update.status) {
+      final next = List<PostModel>.from(recent);
+      next[i] = next[i].copyWith(status: update.status);
+      emit(state.copyWith(recentPosts: next));
+    }
+    if (update.status == PostStatus.published ||
+        update.status == PostStatus.partial ||
+        update.status == PostStatus.failed) {
+      unawaited(refreshPostsSilently());
+    }
   }
 
   Future<void> load() async {
     emit(state.copyWith(loading: true, clearError: true, greeting: greetingForNow()));
 
     final cachedName = await SessionStorage.getName();
-    if (cachedName != null && cachedName.isNotEmpty && !isClosed) {
-      emit(state.copyWith(name: cachedName));
+    final cachedCredits = await SessionStorage.getCredits();
+    final cachedFree = await SessionStorage.getFreeCredits();
+    if (!isClosed) {
+      emit(
+        state.copyWith(
+          name: (cachedName != null && cachedName.isNotEmpty)
+              ? cachedName
+              : state.name,
+          credits: cachedCredits,
+          freeCredits: cachedFree,
+        ),
+      );
     }
 
     try {
       List<PostModel> posts = const [];
       List<SocialAccount> accounts = const [];
+      List<PlatformModel> catalog = const [];
       try {
         posts = await _postsRepo.fetchPosts();
       } catch (e) {
@@ -131,13 +179,24 @@ class HomeCubit extends Cubit<HomeState> {
       } catch (e) {
         AppLogger.w('Home accounts failed', e);
       }
+      try {
+        catalog = await _socialRepo.fetchPlatformCatalog();
+      } catch (e) {
+        AppLogger.w('Home platforms catalog failed', e);
+      }
 
       String name = state.name;
       String? avatar;
+      var credits = state.credits;
+      var freeCredits = state.freeCredits;
       try {
         final profile = await _userRepo.fetchMe();
         name = profile.name;
         avatar = profile.avatarUrl;
+        if (profile.wallet != null) {
+          credits = profile.wallet!.credits;
+          freeCredits = profile.wallet!.freeCredits;
+        }
         final token = await SessionStorage.getToken();
         if (token != null && token.isNotEmpty) {
           await SessionStorage.saveSession(
@@ -145,14 +204,42 @@ class HomeCubit extends Cubit<HomeState> {
             name: profile.name,
             email: profile.email,
             userId: profile.id,
+            credits: credits,
+            freeCredits: freeCredits,
           );
         }
       } catch (e) {
         AppLogger.d('Home profile optional: $e');
       }
 
+      try {
+        final wallet = await _userRepo.fetchWallet();
+        credits = wallet.credits;
+        freeCredits = wallet.freeCredits;
+      } catch (e) {
+        AppLogger.d('Home wallet optional: $e');
+      }
+
       final connectedIds = _socialRepo.connectedPlatformIds(accounts);
       final analytics = LiveAnalytics.fromPosts(posts);
+      final connectedPlatforms = catalog.isNotEmpty
+          ? catalog
+              .map(
+                (p) => p.copyWith(
+                  connected: p.connected || connectedIds.contains(p.id),
+                  accounts: _socialRepo
+                      .accountsForPlatform(p.id, accounts)
+                      .map((a) => a.name)
+                      .toList(),
+                ),
+              )
+              .where((p) => connectedIds.contains(p.id) && !p.isComingSoon)
+              .toList()
+          : _socialRepo
+              .mergePlatforms(accounts)
+              .where((p) => p.accounts.isNotEmpty)
+              .toList();
+      final platformIds = connectedPlatforms.map((p) => p.id).toList();
 
       if (isClosed) return;
       emit(
@@ -164,17 +251,18 @@ class HomeCubit extends Cubit<HomeState> {
           scheduled: analytics.scheduled,
           published: analytics.published,
           drafts: analytics.drafts,
-          platformIds: connectedIds.isNotEmpty
-              ? connectedIds.toList()
-              : AppDataPlatformIds.all,
+          platformIds: platformIds,
+          platforms: connectedPlatforms,
           recentPosts: posts.take(5).toList(),
+          credits: credits,
+          freeCredits: freeCredits,
           clearError: true,
         ),
       );
     } on ApiException catch (e) {
       AppLogger.w('Home live load failed', e);
       if (!isClosed) {
-        emit(state.copyWith(loading: false, error: e.message, platformIds: AppDataPlatformIds.all));
+        emit(state.copyWith(loading: false, error: e.message, platformIds: const [], platforms: const []));
       }
     } catch (e, st) {
       AppLogger.e('Home load failed', e, st);
@@ -183,7 +271,8 @@ class HomeCubit extends Cubit<HomeState> {
           state.copyWith(
             loading: false,
             error: 'Could not load dashboard.',
-            platformIds: AppDataPlatformIds.all,
+            platformIds: const [],
+            platforms: const [],
           ),
         );
       }
@@ -208,20 +297,4 @@ class HomeCubit extends Cubit<HomeState> {
       AppLogger.d('Home silent posts refresh: $e');
     }
   }
-}
-
-/// Static platform id list for empty-connected UI (icons only).
-abstract final class AppDataPlatformIds {
-  static const all = [
-    'facebook',
-    'instagram',
-    'threads',
-    'linkedin',
-    // 'linkedin_organization',
-    'tiktok',
-    'x',
-    'pinterest',
-    'youtube',
-    'google',
-  ];
 }

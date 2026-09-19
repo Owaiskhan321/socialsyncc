@@ -4,9 +4,10 @@ import '../../data/models/models.dart';
 import '../theme/app_colors.dart';
 
 class StatusBadge extends StatelessWidget {
-  const StatusBadge({super.key, required this.status});
+  const StatusBadge({super.key, required this.status, this.compact = false});
 
   final PostStatus status;
+  final bool compact;
 
   @override
   Widget build(BuildContext context) {
@@ -15,20 +16,25 @@ class StatusBadge extends StatelessWidget {
       PostStatus.scheduled => ('Scheduled', AppColors.blue50, AppColors.primary),
       PostStatus.publishing => ('Publishing', AppColors.blue50, AppColors.primary),
       PostStatus.published => ('Published', AppColors.green50, AppColors.success),
+      PostStatus.partial => ('Partial', AppColors.amber50, AppColors.warning),
       PostStatus.failed => ('Failed', AppColors.red50, AppColors.danger),
       PostStatus.cancelled => ('Cancelled', AppColors.gray100, AppColors.gray400),
     };
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+      padding: EdgeInsets.symmetric(
+        horizontal: compact ? 8 : 10,
+        vertical: compact ? 3 : 5,
+      ),
       decoration: BoxDecoration(
         color: bg,
-        borderRadius: BorderRadius.circular(6),
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: fg.withValues(alpha: 0.18)),
       ),
       child: Text(
         label,
         style: TextStyle(
-          fontSize: 11,
-          fontWeight: FontWeight.w600,
+          fontSize: compact ? 11 : 12,
+          fontWeight: FontWeight.w700,
           color: fg,
         ),
       ),

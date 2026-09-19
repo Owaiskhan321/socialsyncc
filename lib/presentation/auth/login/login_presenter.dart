@@ -8,6 +8,7 @@ import '../../../core/firebase/social_auth_service.dart';
 import '../../../core/logger/app_logger.dart';
 import '../../../core/mvp/mvp_base.dart';
 import '../../../core/network/api_exception.dart';
+import '../../../core/network/session_storage.dart';
 import '../../../core/network/session_sync.dart';
 import '../../../core/realtime/pusher_service.dart';
 import '../../../data/models/auth_models.dart';
@@ -112,7 +113,13 @@ class LoginPresenter extends MvpPresenter<LoginState, LoginView> {
       await FcmService.ensureTokenStored();
       await syncUserProfileFromApi();
       unawaited(PusherRealtimeService().connectIfLoggedIn());
-      view?.onLoginSuccess(result.message);
+      final credits = result.wallet?.totalCredits ??
+          await SessionStorage.getTotalCredits();
+      view?.onLoginSuccess(
+        credits > 0
+            ? '${result.message} · $credits credits'
+            : result.message,
+      );
     } on ApiException catch (e) {
       view?.showMessage(e.message);
     } catch (e, st) {
@@ -131,7 +138,13 @@ class LoginPresenter extends MvpPresenter<LoginState, LoginView> {
       await FcmService.ensureTokenStored();
       await syncUserProfileFromApi();
       unawaited(PusherRealtimeService().connectIfLoggedIn());
-      view?.onLoginSuccess(result.message);
+      final credits = result.wallet?.totalCredits ??
+          await SessionStorage.getTotalCredits();
+      view?.onLoginSuccess(
+        credits > 0
+            ? '${result.message} · $credits credits'
+            : result.message,
+      );
     } on SocialAuthException catch (e) {
       if (!e.cancelled) view?.showMessage(e.message);
     } catch (e, st) {
@@ -150,7 +163,13 @@ class LoginPresenter extends MvpPresenter<LoginState, LoginView> {
       await FcmService.ensureTokenStored();
       await syncUserProfileFromApi();
       unawaited(PusherRealtimeService().connectIfLoggedIn());
-      view?.onLoginSuccess(result.message);
+      final credits = result.wallet?.totalCredits ??
+          await SessionStorage.getTotalCredits();
+      view?.onLoginSuccess(
+        credits > 0
+            ? '${result.message} · $credits credits'
+            : result.message,
+      );
     } on SocialAuthException catch (e) {
       if (!e.cancelled) view?.showMessage(e.message);
     } catch (e, st) {

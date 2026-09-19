@@ -8,6 +8,7 @@ class UserProfile {
     required this.email,
     this.avatarUrl,
     this.plan,
+    this.wallet,
   });
 
   final String id;
@@ -15,16 +16,22 @@ class UserProfile {
   final String email;
   final String? avatarUrl;
   final String? plan;
+  final WalletInfo? wallet;
 
   factory UserProfile.fromJson(dynamic data) {
     final map = data is Map ? Map<String, dynamic>.from(data) : <String, dynamic>{};
     final user = map['user'] is Map ? Map<String, dynamic>.from(map['user'] as Map) : map;
+    WalletInfo? wallet;
+    if (user['wallet'] is Map || map['wallet'] is Map) {
+      wallet = WalletInfo.fromJson(user['wallet'] ?? map['wallet']);
+    }
     return UserProfile(
       id: ApiJsonUtils.readString(user, ['id', 'uuid', 'userId']) ?? '',
       name: ApiJsonUtils.readString(user, ['name', 'fullName', 'displayName']) ?? 'User',
       email: ApiJsonUtils.readString(user, ['email']) ?? '',
       avatarUrl: ApiJsonUtils.readString(user, ['avatar', 'avatarUrl', 'photo', 'image']),
       plan: ApiJsonUtils.readString(user, ['plan', 'subscription', 'subscriptionPlan']),
+      wallet: wallet,
     );
   }
 }
@@ -109,6 +116,34 @@ class SocialAccount {
       connectedAt: ApiJsonUtils.readString(json, ['connectedAt', 'connected_at']),
       lastSyncedAt: ApiJsonUtils.readString(json, ['lastSyncedAt', 'last_synced_at']),
     );
+  }
+}
+
+extension SocialAccountPreview on SocialAccount {
+  String get previewLabel {
+    final displayName = this.name.trim();
+    if (displayName.isNotEmpty && displayName.toLowerCase() != 'account') {
+      return displayName;
+    }
+    final user = username?.trim();
+    if (user != null && user.isNotEmpty) {
+      return user.replaceFirst(RegExp(r'^@'), '');
+    }
+    return provider;
+  }
+
+  String get previewHandle {
+    final user = username?.trim();
+    if (user != null && user.isNotEmpty) {
+      return user.replaceFirst(RegExp(r'^@'), '');
+    }
+    final displayName = this.name.trim();
+    if (displayName.isNotEmpty && displayName.toLowerCase() != 'account') {
+      final cleaned =
+          displayName.toLowerCase().replaceAll(RegExp(r'[^a-z0-9_]+'), '');
+      if (cleaned.isNotEmpty) return cleaned;
+    }
+    return provider.toLowerCase();
   }
 }
 
@@ -268,35 +303,129 @@ extension PostModelApi on PostModel {
       'scheduled' || 'pending' || 'queued' => PostStatus.scheduled,
       'publishing' || 'processing' => PostStatus.publishing,
       'published' || 'success' || 'live' || 'processed' => PostStatus.published,
+      'partial' || 'partially_published' || 'partial_success' =>
+        PostStatus.partial,
       'failed' || 'error' => PostStatus.failed,
       'cancelled' || 'canceled' => PostStatus.cancelled,
       _ => PostStatus.draft,
     };
 
-    // Prefer platform-level outcome when overall status is still mid-flight.
     final platformsRaw = json['platforms'] ?? json['channels'];
+    final platformResults = <PostPlatformResult>[];
+    final platforms = <String>[];
+
+    void addPlatformId(String? raw) {
+      if (raw == null || raw.isEmpty) return;
+      final normalized = _normalizePostPlatformId(raw);
+      if (normalized == null || platforms.contains(normalized)) return;
+      platforms.add(normalized);
+    }
+
     if (platformsRaw is List && platformsRaw.isNotEmpty) {
-      final platformStatuses = <String>[];
       for (final p in platformsRaw) {
+        if (p is String) {
+          addPlatformId(p);
+          continue;
+        }
         if (p is! Map) continue;
         final map = Map<String, dynamic>.from(p);
-        final ps = ApiJsonUtils.readString(map, [
+
+        String? provider;
+        final meta = map['metadata'];
+        Map<String, dynamic>? metaMap;
+        if (meta is Map) {
+          metaMap = Map<String, dynamic>.from(meta);
+          provider = ApiJsonUtils.readString(
+            metaMap,
+            ['provider', 'platform', 'slug', 'name'],
+          );
+        }
+        provider ??= ApiJsonUtils.readString(map, [
+          'provider',
+          'platform',
+          'slug',
+          'name',
+        ]);
+        provider ??= _inferProviderFromMetadata(metaMap, map);
+        final platformId = _normalizePostPlatformId(provider ?? '');
+        if (platformId == null) continue;
+        addPlatformId(platformId);
+
+        final psRaw = ApiJsonUtils.readString(map, [
               'platformStatus',
               'status',
               'state',
             ])
             ?.toLowerCase();
-        if (ps != null && ps.isNotEmpty) platformStatuses.add(ps);
+        final platformStatus = switch (psRaw) {
+          'scheduled' || 'pending' || 'queued' => PostStatus.scheduled,
+          'publishing' || 'processing' => PostStatus.publishing,
+          'published' || 'success' || 'live' || 'processed' =>
+            PostStatus.published,
+          'failed' || 'error' => PostStatus.failed,
+          'cancelled' || 'canceled' => PostStatus.cancelled,
+          'draft' => PostStatus.draft,
+          _ => status == PostStatus.publishing
+              ? PostStatus.publishing
+              : PostStatus.published,
+        };
+        final errorMessage = ApiJsonUtils.readString(map, [
+          'errorMessage',
+          'error',
+          'message',
+          'reason',
+        ]);
+        final platformPostId = ApiJsonUtils.readString(map, [
+          'platformPostId',
+          'platform_post_id',
+          'externalId',
+          'external_id',
+        ]);
+
+        // Avoid duplicate rows for same platform id.
+        final existing = platformResults.indexWhere(
+          (r) => r.platformId == platformId,
+        );
+        final result = PostPlatformResult(
+          platformId: platformId,
+          status: platformStatus,
+          errorMessage: errorMessage,
+          platformPostId: platformPostId,
+        );
+        if (existing >= 0) {
+          // Prefer failed / more specific outcome.
+          if (platformStatus == PostStatus.failed ||
+              platformResults[existing].status != PostStatus.failed) {
+            platformResults[existing] = result;
+          }
+        } else {
+          platformResults.add(result);
+        }
       }
-      if (platformStatuses.isNotEmpty) {
-        final allPublished = platformStatuses.every(
-          (s) => s == 'published' || s == 'success' || s == 'live',
-        );
-        final anyFailed = platformStatuses.any(
-          (s) => s == 'failed' || s == 'error',
-        );
+
+      if (platformResults.isNotEmpty) {
+        final allPublished =
+            platformResults.every((r) => r.status == PostStatus.published);
+        final allFailed =
+            platformResults.every((r) => r.status == PostStatus.failed);
+        final anyFailed =
+            platformResults.any((r) => r.status == PostStatus.failed);
+        final anyPublished =
+            platformResults.any((r) => r.status == PostStatus.published);
+        final anyPublishing =
+            platformResults.any((r) => r.status == PostStatus.publishing);
+
         if (allPublished) {
           status = PostStatus.published;
+        } else if (allFailed) {
+          status = PostStatus.failed;
+        } else if (anyFailed && anyPublished) {
+          status = PostStatus.partial;
+        } else if (anyPublishing &&
+            (status == PostStatus.publishing ||
+                status == PostStatus.draft ||
+                status == PostStatus.published)) {
+          status = PostStatus.publishing;
         } else if (anyFailed &&
             (status == PostStatus.publishing || status == PostStatus.draft)) {
           status = PostStatus.failed;
@@ -304,44 +433,34 @@ extension PostModelApi on PostModel {
       }
     }
 
-    final platforms = <String>[];
-    void addPlatform(String? raw) {
-      if (raw == null || raw.isEmpty) return;
-      final normalized = _normalizePostPlatformId(raw);
-      if (normalized == null || platforms.contains(normalized)) return;
-      platforms.add(normalized);
-    }
-
-    if (platformsRaw is List) {
-      for (final p in platformsRaw) {
-        if (p is String) {
-          addPlatform(p);
-        } else if (p is Map) {
-          final map = Map<String, dynamic>.from(p);
-          // Prefer metadata.provider — row `id` is a UUID, not the brand.
-          String? provider;
-          final meta = map['metadata'];
-          if (meta is Map) {
-            provider = ApiJsonUtils.readString(
-              Map<String, dynamic>.from(meta),
-              ['provider', 'platform', 'slug', 'name'],
-            );
-          }
-          provider ??= ApiJsonUtils.readString(map, [
-            'provider',
-            'platform',
-            'slug',
-            'name',
-          ]);
-          addPlatform(provider);
-        }
-      }
-    }
-
     for (final flag in _platformFlags.entries) {
       final v = json[flag.key];
       if (v == true || v == 'true' || v == 1 || v == '1') {
-        addPlatform(flag.value);
+        addPlatformId(flag.value);
+      }
+    }
+
+    // Ensure every known platform id has a result row when we only have ids.
+    if (platformResults.isEmpty && platforms.isNotEmpty) {
+      for (final id in platforms) {
+        platformResults.add(
+          PostPlatformResult(
+            platformId: id,
+            status: status == PostStatus.failed
+                ? PostStatus.failed
+                : status == PostStatus.partial
+                    ? PostStatus.published
+                    : status,
+          ),
+        );
+      }
+    } else if (platformResults.isNotEmpty) {
+      for (final id in platforms) {
+        if (!platformResults.any((r) => r.platformId == id)) {
+          platformResults.add(
+            PostPlatformResult(platformId: id, status: status),
+          );
+        }
       }
     }
 
@@ -385,22 +504,57 @@ extension PostModelApi on PostModel {
       'fileUrl',
       'url',
     ]);
-    if (thumbnail == null || thumbnail.isEmpty) {
-      final media = json['media'] ?? json['files'] ?? json['attachments'];
-      if (media is List && media.isNotEmpty) {
-        final first = media.first;
-        if (first is String && first.startsWith('http')) {
-          thumbnail = first;
-        } else if (first is Map) {
-          thumbnail = ApiJsonUtils.readString(Map<String, dynamic>.from(first), [
+    var mediaIsVideo = false;
+    final mediaUrls = <String>[];
+    final media = json['media'] ?? json['files'] ?? json['attachments'];
+    if (media is List && media.isNotEmpty) {
+      // Sort by order when present.
+      final items = [...media];
+      items.sort((a, b) {
+        if (a is! Map || b is! Map) return 0;
+        final ao = a['order'];
+        final bo = b['order'];
+        final ai = ao is num ? ao.toInt() : 0;
+        final bi = bo is num ? bo.toInt() : 0;
+        return ai.compareTo(bi);
+      });
+
+      for (final item in items) {
+        if (item is String && item.startsWith('http')) {
+          mediaUrls.add(item);
+          continue;
+        }
+        if (item is Map) {
+          final map = Map<String, dynamic>.from(item);
+          final type =
+              (ApiJsonUtils.readString(map, ['type', 'mediaType', 'mimeType']) ??
+                      '')
+                  .toLowerCase();
+          final url = ApiJsonUtils.readString(map, [
             'url',
             'fileUrl',
             'thumbnail',
             'path',
             'src',
           ]);
+          if (url == null || url.isEmpty || !url.startsWith('http')) continue;
+          mediaUrls.add(url);
+          if (type.contains('video') || _looksLikeVideoUrl(url)) {
+            mediaIsVideo = true;
+          }
         }
       }
+    }
+
+    if (mediaUrls.isNotEmpty) {
+      thumbnail ??= mediaUrls.first;
+    }
+    if (!mediaIsVideo && thumbnail != null) {
+      mediaIsVideo = _looksLikeVideoUrl(thumbnail);
+    }
+    // Mixed: if any video URL, treat as video (player for first).
+    if (!mediaIsVideo) {
+      mediaIsVideo = mediaUrls.any(_looksLikeVideoUrl);
     }
 
     return PostModel(
@@ -411,8 +565,46 @@ extension PostModelApi on PostModel {
       status: status,
       publishAt: publishLabel,
       thumbnail: thumbnail,
+      mediaUrls: mediaUrls,
+      mediaIsVideo: mediaIsVideo,
       scheduledDate: scheduledDate,
+      platformResults: platformResults,
     );
+  }
+
+  static bool _looksLikeVideoUrl(String url) {
+    final lower = url.toLowerCase();
+    return lower.contains('.mp4') ||
+        lower.contains('.mov') ||
+        lower.contains('.m4v') ||
+        lower.contains('.webm') ||
+        lower.contains('.avi') ||
+        lower.contains('/video/');
+  }
+
+  /// Infer brand when API omits `provider` but includes platform-specific ids.
+  static String? _inferProviderFromMetadata(
+    Map<String, dynamic>? meta,
+    Map<String, dynamic> row,
+  ) {
+    bool has(String key) {
+      final v = meta?[key] ?? row[key];
+      return v != null && '$v'.isNotEmpty && '$v' != 'null';
+    }
+
+    if (has('boardId') || has('board_id') || has('pinterestBoardId')) {
+      return 'pinterest';
+    }
+    if (has('youtubeChannelId') || has('channelId')) return 'youtube';
+    if (has('googleBusinessProfileId') || has('locationId')) return 'google';
+    if (has('instagramId') || has('igUserId')) return 'instagram';
+    if (has('facebookPageId') || has('pageId')) return 'facebook';
+    if (has('linkedinOrganizationId') || has('organizationId')) {
+      return 'linkedin_organization';
+    }
+    if (has('tiktokAccountId')) return 'tiktok';
+    if (has('snapchatProfileId') || has('publicProfileId')) return 'snapchat';
+    return null;
   }
 
   static const _platformFlags = {
@@ -429,6 +621,7 @@ extension PostModelApi on PostModel {
     'pinterestPost': 'pinterest',
     'youtubePost': 'youtube',
     'googleBusinessPost': 'google',
+    'snapchatPost': 'snapchat',
   };
 
   static final _uuidLike = RegExp(
@@ -446,7 +639,7 @@ extension PostModelApi on PostModel {
 /// Maps UI platform ids ↔ OAuth `platform` query values.
 ///
 /// Backend allows: google, meta, thread, x, linkedin, linkedin_organization,
-/// pinterest, tiktok (plus any newly added slugs).
+/// pinterest, tiktok, snapchat (plus any newly added slugs).
 abstract final class PlatformOAuth {
   static String platformFor(String platformId) => switch (platformId.toLowerCase()) {
         'facebook' || 'instagram' || 'meta' => 'meta',
@@ -462,6 +655,7 @@ abstract final class PlatformOAuth {
           'linkedin_organization',
         'pinterest' => 'pinterest',
         'tiktok' => 'tiktok',
+        'snapchat' || 'snap' => 'snapchat',
         _ => platformId.toLowerCase(),
       };
 
@@ -471,6 +665,7 @@ abstract final class PlatformOAuth {
         'twitter' => 'x',
         'thread' || 'threads' => 'threads',
         'google_business' => 'google',
+        'snap' => 'snapchat',
         'linkedin-organization' ||
         'linkedin_org' ||
         'linkedin_page' ||
@@ -494,5 +689,75 @@ abstract final class PlatformPostFields {
     'pinterest': 'pinterestPost',
     'youtube': 'youtubePost',
     'google': 'googleBusinessPost',
+    'snapchat': 'snapchatPost',
   };
+}
+
+extension PlatformModelCatalog on PlatformModel {
+  static PlatformModel fromCatalogJson(Map<String, dynamic> json) {
+    final slugRaw =
+        ApiJsonUtils.readString(json, ['slug', 'provider', 'platform']) ?? '';
+    final uiId = PlatformOAuth.uiIdFor(slugRaw);
+    final name = ApiJsonUtils.readString(json, ['name', 'title']) ??
+        (uiId.isEmpty ? 'Platform' : uiId);
+    final status =
+        (ApiJsonUtils.readString(json, ['status', 'state']) ?? 'active')
+            .toLowerCase();
+    final connected = json['connected'] == true ||
+        json['connected'] == 1 ||
+        json['connected'] == 'true';
+    final costRaw = json['creditCost'] ?? json['credit_cost'] ?? 0;
+    final creditCost = costRaw is int
+        ? costRaw
+        : costRaw is num
+            ? costRaw.toInt()
+            : int.tryParse('$costRaw') ?? 0;
+
+    return PlatformModel(
+      id: uiId.isEmpty ? slugRaw.toLowerCase() : uiId,
+      name: name,
+      color: _brandColor(uiId.isEmpty ? slugRaw : uiId),
+      accounts: const [],
+      availabilityStatus: status,
+      creditCost: creditCost,
+      connected: connected,
+      description: ApiJsonUtils.readString(json, ['description']),
+    );
+  }
+
+  static List<PlatformModel> listFromApi(dynamic data) {
+    final rows = ApiJsonUtils.extractList(
+      data,
+      keys: const ['platforms', 'data', 'items', 'results'],
+    );
+    final out = <PlatformModel>[];
+    final seen = <String>{};
+    for (final row in rows) {
+      final p = fromCatalogJson(row);
+      if (p.id.isEmpty || seen.contains(p.id)) continue;
+      // Prefer concrete brands over generic "meta" when both exist.
+      if (p.id == 'meta') continue;
+      seen.add(p.id);
+      out.add(p);
+    }
+    out.sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
+    return out;
+  }
+
+  static int _brandColor(String id) {
+    return switch (id.toLowerCase()) {
+      'facebook' => 0xFF1877F2,
+      'instagram' => 0xFFE1306C,
+      'threads' || 'thread' => 0xFF000000,
+      'linkedin' => 0xFF0A66C2,
+      'linkedin_organization' => 0xFFD4AF37,
+      'tiktok' => 0xFF010101,
+      'x' || 'twitter' => 0xFF000000,
+      'pinterest' => 0xFFE60023,
+      'youtube' => 0xFFFF0000,
+      'google' => 0xFF4285F4,
+      'snapchat' => 0xFFFFFC00,
+      _ => 0xFF64748B,
+    };
+  }
 }

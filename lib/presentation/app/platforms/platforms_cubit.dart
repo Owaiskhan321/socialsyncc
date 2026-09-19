@@ -91,7 +91,7 @@ class PlatformsCubit extends Cubit<PlatformsState> {
       : _repo = repository ?? SocialRepository(),
         super(
           PlatformsState(
-            platforms: AppData.platforms,
+            platforms: AppData.platforms.sortedByConnection(),
             connectedIds: const {},
             loading: true,
           ),
@@ -105,19 +105,48 @@ class PlatformsCubit extends Cubit<PlatformsState> {
     if (isClosed) return;
     emit(state.copyWith(loading: true, clearError: true));
     try {
+      List<PlatformModel> catalog = const [];
+      try {
+        catalog = await _repo.fetchPlatformCatalog();
+      } catch (e) {
+        AppLogger.w('Platforms catalog failed', e);
+      }
+
       final result = await _repo.fetchSocialAccountsResult();
       if (isClosed) return;
+
+      final accountConnected = _repo.connectedPlatformIds(result.connected);
+      final merged = catalog.isNotEmpty
+          ? catalog
+              .map(
+                (p) => p.copyWith(
+                  connected: p.connected || accountConnected.contains(p.id),
+                  accounts: _repo
+                      .accountsForPlatform(p.id, result.connected)
+                      .map((a) => a.name)
+                      .toList(),
+                ),
+              )
+              .toList()
+          : _repo.mergePlatforms(result.connected);
+
+      final connectedIds = <String>{
+        ...accountConnected,
+        for (final p in merged)
+          if (p.connected) p.id,
+      };
+
       emit(
         state.copyWith(
-          platforms: _repo.mergePlatforms(result.connected),
-          connectedIds: _repo.connectedPlatformIds(result.connected),
+          platforms: merged.sortedByConnection(connectedIds),
+          connectedIds: connectedIds,
           connectedAccounts: result.connected,
           disconnectedAccounts: result.disconnected,
           activeCount: result.activeCount,
           disconnectedCount: result.disconnectedCount,
           totalAccounts: result.total,
           loading: false,
-          usedFallback: false,
+          usedFallback: catalog.isEmpty,
         ),
       );
     } on ApiException catch (e) {
@@ -125,7 +154,7 @@ class PlatformsCubit extends Cubit<PlatformsState> {
       if (!isClosed) {
         emit(
           state.copyWith(
-            platforms: AppData.platforms,
+            platforms: AppData.platforms.sortedByConnection(),
             connectedIds: const {},
             connectedAccounts: const [],
             disconnectedAccounts: const [],
@@ -143,7 +172,7 @@ class PlatformsCubit extends Cubit<PlatformsState> {
       if (!isClosed) {
         emit(
           state.copyWith(
-            platforms: AppData.platforms,
+            platforms: AppData.platforms.sortedByConnection(),
             connectedIds: const {},
             connectedAccounts: const [],
             disconnectedAccounts: const [],
@@ -160,6 +189,18 @@ class PlatformsCubit extends Cubit<PlatformsState> {
     if (state.busyPlatformId != null || state.busyAccountId != null || isClosed) {
       return;
     }
+
+    final platform = state.platforms.where((p) => p.id == id).firstOrNull;
+    if (platform != null && platform.isComingSoon) {
+      emit(
+        state.copyWith(
+          error: '${platform.name} is coming soon',
+          clearBusy: true,
+        ),
+      );
+      return;
+    }
+
     emit(state.copyWith(busyPlatformId: id, clearError: true));
 
     final connected = state.connectedIds.contains(id);
@@ -171,8 +212,7 @@ class PlatformsCubit extends Cubit<PlatformsState> {
         final url = await _repo.fetchOAuthConnectUrl(id);
         if (isClosed) return;
         AppLogger.event('platform_connect', {'id': id, 'url': url});
-        final platformName =
-            state.platforms.where((p) => p.id == id).map((p) => p.name).firstOrNull ?? id;
+        final platformName = platform?.name ?? id;
         await OAuthLauncher.open(
           url: url,
           title: 'Connect $platformName',

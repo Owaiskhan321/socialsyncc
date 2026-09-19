@@ -9,7 +9,9 @@ import '../../../core/network/session_sync.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/widgets/app_snackbar.dart';
 import '../../../core/widgets/mobile_header.dart';
+import '../../../data/models/models.dart';
 import '../../../data/repositories/user_repository.dart';
+import '../../../navigation/app_launch_transition.dart';
 
 class ProfilePage extends StatefulWidget {
   const ProfilePage({super.key});
@@ -22,6 +24,7 @@ class _ProfilePageState extends State<ProfilePage> {
   String _name = '';
   String _email = '';
   String? _plan;
+  int _credits = 0;
 
   @override
   void initState() {
@@ -32,15 +35,21 @@ class _ProfilePageState extends State<ProfilePage> {
   Future<void> _load() async {
     final name = await SessionStorage.getName();
     final email = await SessionStorage.getEmail();
+    final credits = await SessionStorage.getTotalCredits();
     if (mounted) {
       setState(() {
         if (name != null && name.isNotEmpty) _name = name;
         if (email != null) _email = email;
+        _credits = credits;
       });
     }
     try {
       await syncUserProfileFromApi();
       final profile = await UserRepository().fetchMe();
+      WalletInfo? wallet = profile.wallet;
+      try {
+        wallet = await UserRepository().fetchWallet();
+      } catch (_) {}
       if (!mounted) return;
       setState(() {
         _name = profile.name;
@@ -48,6 +57,7 @@ class _ProfilePageState extends State<ProfilePage> {
         _plan = (profile.plan != null && profile.plan!.trim().isNotEmpty)
             ? profile.plan!.trim()
             : null;
+        if (wallet != null) _credits = wallet.totalCredits;
       });
     } catch (_) {}
   }
@@ -178,12 +188,45 @@ class _ProfilePageState extends State<ProfilePage> {
                           _email,
                           style: const TextStyle(fontSize: 13, color: AppColors.gray500),
                         ),
+                        const SizedBox(height: 12),
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 14,
+                            vertical: 8,
+                          ),
+                          decoration: BoxDecoration(
+                            color: AppColors.blue50,
+                            borderRadius: BorderRadius.circular(20),
+                            border: Border.all(
+                              color: AppColors.primary.withValues(alpha: 0.2),
+                            ),
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              const Icon(
+                                Icons.bolt_rounded,
+                                size: 16,
+                                color: AppColors.primary,
+                              ),
+                              const SizedBox(width: 6),
+                              Text(
+                                '$_credits credits',
+                                style: const TextStyle(
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.w700,
+                                  color: AppColors.primaryDark,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
                         if (_plan != null) ...[
-                          const SizedBox(height: 12),
+                          const SizedBox(height: 10),
                           Container(
                             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                             decoration: BoxDecoration(
-                              color: AppColors.blue50,
+                              color: AppColors.gray50,
                               borderRadius: BorderRadius.circular(20),
                             ),
                             child: Text(
@@ -191,7 +234,7 @@ class _ProfilePageState extends State<ProfilePage> {
                               style: const TextStyle(
                                 fontSize: 12,
                                 fontWeight: FontWeight.w600,
-                                color: AppColors.primary,
+                                color: AppColors.gray700,
                               ),
                             ),
                           ),
@@ -220,7 +263,12 @@ class _ProfilePageState extends State<ProfilePage> {
                               return;
                             }
                             AppLogger.navigation('profile', item.$3 ?? 'none');
-                            if (item.$3 != null) context.push(item.$3!);
+                            if (item.$3 != null) {
+                              context.pushFromSource(
+                                item.$3!,
+                                borderRadius: 14,
+                              );
+                            }
                           },
                           child: Padding(
                             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),

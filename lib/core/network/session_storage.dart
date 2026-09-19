@@ -22,20 +22,51 @@ class SessionStorage {
   static const _fcmTokenKey = 'fcm_token';
   static const _userIdKey = 'auth_user_id';
   static const _deviceIdKey = 'device_id';
+  static const _creditsKey = 'wallet_credits';
+  static const _freeCreditsKey = 'wallet_free_credits';
 
   static Future<void> saveSession({
     required String token,
     String? email,
     String? name,
     String? userId,
+    int? credits,
+    int? freeCredits,
   }) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(_tokenKey, token);
     if (email != null) await prefs.setString(_emailKey, email);
     if (name != null) await prefs.setString(_nameKey, name);
     if (userId != null) await prefs.setString(_userIdKey, userId);
+    if (credits != null) await prefs.setInt(_creditsKey, credits);
+    if (freeCredits != null) await prefs.setInt(_freeCreditsKey, freeCredits);
     AppLogger.i('Session saved');
     authListenable.notifySessionChanged();
+  }
+
+  static Future<void> saveWallet({
+    required int credits,
+    required int freeCredits,
+  }) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setInt(_creditsKey, credits);
+    await prefs.setInt(_freeCreditsKey, freeCredits);
+  }
+
+  static Future<int> getCredits() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getInt(_creditsKey) ?? 0;
+  }
+
+  static Future<int> getFreeCredits() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getInt(_freeCreditsKey) ?? 0;
+  }
+
+  static Future<int> getTotalCredits() async {
+    final c = await getCredits();
+    final f = await getFreeCredits();
+    return c + f;
   }
 
   static Future<bool> isLoggedIn() async {
@@ -101,6 +132,8 @@ class SessionStorage {
     await prefs.remove(_emailKey);
     await prefs.remove(_nameKey);
     await prefs.remove(_userIdKey);
+    await prefs.remove(_creditsKey);
+    await prefs.remove(_freeCreditsKey);
     AppLogger.i('Session cleared');
     authListenable.notifySessionChanged();
   }

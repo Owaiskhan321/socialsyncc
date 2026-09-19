@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
 
@@ -8,6 +7,8 @@ import '../../../core/theme/app_colors.dart';
 import '../../../core/utils/keyboard_dismiss.dart';
 import '../../../core/widgets/app_button.dart';
 import '../../../core/widgets/app_snackbar.dart';
+import '../../../navigation/app_launch_transition.dart';
+import 'animated_otp_verification.dart';
 import 'otp_verify_presenter.dart';
 
 class OtpVerifyPage extends StatefulWidget {
@@ -30,6 +31,10 @@ class _OtpVerifyPageState extends State<OtpVerifyPage> implements OtpVerifyView 
       List.generate(6, (_) => TextEditingController());
   final List<FocusNode> _nodes = List.generate(6, (_) => FocusNode());
 
+  OtpAnimationState _anim = OtpAnimationState.input;
+  bool _navigating = false;
+  String _successMessage = '';
+
   @override
   void initState() {
     super.initState();
@@ -38,6 +43,11 @@ class _OtpVerifyPageState extends State<OtpVerifyPage> implements OtpVerifyView 
       purpose: widget.purpose,
     );
     _presenter.attach(this);
+    for (final n in _nodes) {
+      n.addListener(() {
+        if (mounted) setState(() {});
+      });
+    }
   }
 
   @override
@@ -59,34 +69,80 @@ class _OtpVerifyPageState extends State<OtpVerifyPage> implements OtpVerifyView 
   }
 
   @override
-  void onVerifySuccess(String message) {
+  void onVerifyError(String message) {
     if (!mounted) return;
-    AppSnackBar.success(context, message);
-    AppLogger.navigation('otp-verify', 'login');
-    Future.delayed(const Duration(milliseconds: 600), () {
+    setState(() => _anim = OtpAnimationState.error);
+    AppSnackBar.error(context, message);
+    Future<void>.delayed(const Duration(milliseconds: 500), () {
       if (!mounted) return;
-      context.go('/login');
+      if (_anim == OtpAnimationState.error) {
+        setState(() => _anim = OtpAnimationState.input);
+      }
     });
+  }
+
+  @override
+  void onVerifySuccess(String message) {
+    if (!mounted || _navigating) return;
+    // Reset-password flow: skip orbit animation, go next immediately.
+    if (widget.purpose == OtpPurpose.resetPassword) {
+      return;
+    }
+    _successMessage = message;
+    KeyboardDismiss.hide(context);
+    setState(() => _anim = OtpAnimationState.movingToCenter);
+  }
+
+  void _onSuccessAnimationComplete() {
+    if (!mounted || _navigating) return;
+    _navigating = true;
+    if (_successMessage.isNotEmpty) {
+      AppSnackBar.success(context, _successMessage);
+    }
+    AppLogger.navigation('otp-verify', 'login');
+    context.go('/login');
   }
 
   @override
   void goResetPassword(String email, String otp) {
     if (!mounted) return;
     AppLogger.navigation('otp-verify', 'reset-password');
-    context.push(
+    context.pushFromSource(
       '/reset-password?email=${Uri.encodeComponent(email)}&otp=${Uri.encodeComponent(otp)}',
+      borderRadius: 20,
     );
   }
 
   void _onChanged(int index, String value) {
+    if (_anim == OtpAnimationState.verifying ||
+        _anim == OtpAnimationState.movingToCenter ||
+        _anim == OtpAnimationState.orbiting ||
+        _anim == OtpAnimationState.collapsing ||
+        _anim == OtpAnimationState.success) {
+      return;
+    }
+
     if (value.length > 1) {
       final chars = value.replaceAll(RegExp(r'\D'), '');
-      for (var i = 0; i < 6 && i < chars.length; i++) {
-        _ctrls[i].text = chars[i];
-        _presenter.onDigitChanged(i, chars[i]);
+      // Full OTP paste (≥4 digits). Short multi-char input = last digit only.
+      if (chars.length >= 4) {
+        for (var i = 0; i < 6 && i < chars.length; i++) {
+          _ctrls[i].text = chars[i];
+          _presenter.onDigitChanged(i, chars[i]);
+        }
+        final focusIdx = chars.length.clamp(0, 5);
+        _nodes[focusIdx].requestFocus();
+      } else {
+        final last = chars.isEmpty ? '' : chars[chars.length - 1];
+        _ctrls[index].value = TextEditingValue(
+          text: last,
+          selection: TextSelection.collapsed(offset: last.length),
+        );
+        _presenter.onDigitChanged(index, last);
+        if (last.isNotEmpty && index < 5) {
+          _nodes[index + 1].requestFocus();
+        }
       }
-      final focusIdx = chars.length.clamp(0, 5);
-      _nodes[focusIdx].requestFocus();
       return;
     }
 
@@ -98,8 +154,36 @@ class _OtpVerifyPageState extends State<OtpVerifyPage> implements OtpVerifyView 
     }
   }
 
+  Future<void> _verify() async {
+    if (_navigating) return;
+    if (_anim == OtpAnimationState.verifying ||
+        _anim == OtpAnimationState.movingToCenter ||
+        _anim == OtpAnimationState.success) {
+      return;
+    }
+    KeyboardDismiss.hide(context);
+
+    if (widget.purpose == OtpPurpose.resetPassword) {
+      await _presenter.verifyCode();
+      return;
+    }
+
+    setState(() => _anim = OtpAnimationState.verifying);
+    await _presenter.verifyCode();
+    if (!mounted) return;
+    // If still verifying, API failed without error callback path — reset.
+    if (_anim == OtpAnimationState.verifying) {
+      setState(() => _anim = OtpAnimationState.input);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
+    final successPhase = _anim == OtpAnimationState.movingToCenter ||
+        _anim == OtpAnimationState.orbiting ||
+        _anim == OtpAnimationState.collapsing ||
+        _anim == OtpAnimationState.success;
+
     return BlocProvider.value(
       value: _presenter.cubit as OtpVerifyCubit,
       child: KeyboardDismissScope(
@@ -114,171 +198,136 @@ class _OtpVerifyPageState extends State<OtpVerifyPage> implements OtpVerifyView 
                 children: [
                   const SizedBox(height: 8),
                   _AuthBackButton(onTap: () {
+                    if (successPhase) return;
                     KeyboardDismiss.hide(context);
                     context.pop();
                   }),
                   const SizedBox(height: 40),
-                  Container(
-                    width: 56,
-                    height: 56,
-                    decoration: BoxDecoration(
-                      color: AppColors.blue50,
-                      borderRadius: BorderRadius.circular(16),
-                    ),
-                    child: const Icon(
-                      Icons.mail_outline_rounded,
-                      size: 26,
-                      color: AppColors.primary,
+                  AnimatedOpacity(
+                    opacity: successPhase ? 0.35 : 1,
+                    duration: const Duration(milliseconds: 280),
+                    child: Container(
+                      width: 56,
+                      height: 56,
+                      decoration: BoxDecoration(
+                        color: successPhase
+                            ? AppColors.green50
+                            : AppColors.blue50,
+                        borderRadius: BorderRadius.circular(16),
+                      ),
+                      child: Icon(
+                        successPhase
+                            ? Icons.verified_outlined
+                            : Icons.mail_outline_rounded,
+                        size: 26,
+                        color: successPhase
+                            ? AppColors.success
+                            : AppColors.primary,
+                      ),
                     ),
                   ),
                   const SizedBox(height: 24),
-                  const Text(
-                    'Check your email',
-                    style: TextStyle(
-                      fontSize: 28,
-                      fontWeight: FontWeight.w700,
-                      color: AppColors.gray900,
-                      letterSpacing: -0.4,
-                    ),
-                  ),
-                  const SizedBox(height: 10),
-                  BlocBuilder<OtpVerifyCubit, OtpVerifyState>(
-                    builder: (context, state) {
-                      return Text.rich(
-                        TextSpan(
-                          style: const TextStyle(
-                            fontSize: 15,
-                            color: AppColors.gray500,
-                            height: 1.5,
-                          ),
-                          children: [
-                            const TextSpan(
-                              text: 'We sent a 6-digit verification code to ',
-                            ),
-                            TextSpan(
-                              text: state.email.isEmpty ? 'your email' : state.email,
-                              style: const TextStyle(
-                                fontWeight: FontWeight.w700,
-                                color: AppColors.gray900,
-                              ),
-                            ),
-                          ],
-                        ),
-                      );
-                    },
+                  _VerificationTextContent(
+                    success: successPhase,
+                    email: widget.email,
                   ),
                   const SizedBox(height: 32),
                   BlocBuilder<OtpVerifyCubit, OtpVerifyState>(
                     builder: (context, state) {
-                      return Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: List.generate(6, (i) {
-                          final filled = state.digits[i].isNotEmpty;
-                          return SizedBox(
-                            width: 48,
-                            height: 56,
-                            child: TextField(
-                              controller: _ctrls[i],
-                              focusNode: _nodes[i],
-                              textAlign: TextAlign.center,
-                              keyboardType: TextInputType.number,
-                              maxLength: 1,
-                              enabled: !state.loading,
-                              style: const TextStyle(
-                                fontSize: 20,
-                                fontWeight: FontWeight.w700,
-                                color: AppColors.gray900,
-                              ),
-                              inputFormatters: [
-                                FilteringTextInputFormatter.digitsOnly,
-                              ],
-                              decoration: InputDecoration(
-                                counterText: '',
-                                filled: true,
-                                fillColor: AppColors.gray50,
-                                contentPadding: EdgeInsets.zero,
-                                border: OutlineInputBorder(
-                                  borderRadius: BorderRadius.circular(16),
-                                  borderSide: BorderSide(
-                                    color: filled
-                                        ? AppColors.primary
-                                        : AppColors.gray200,
-                                    width: filled ? 1.5 : 1,
-                                  ),
-                                ),
-                                enabledBorder: OutlineInputBorder(
-                                  borderRadius: BorderRadius.circular(16),
-                                  borderSide: BorderSide(
-                                    color: filled
-                                        ? AppColors.primary
-                                        : AppColors.gray200,
-                                    width: filled ? 1.5 : 1,
-                                  ),
-                                ),
-                                focusedBorder: OutlineInputBorder(
-                                  borderRadius: BorderRadius.circular(16),
-                                  borderSide: const BorderSide(
-                                    color: AppColors.primary,
-                                    width: 1.5,
-                                  ),
-                                ),
-                              ),
-                              onChanged: (v) => _onChanged(i, v),
-                            ),
-                          );
-                        }),
+                      return AnimatedOtpVerification(
+                        length: 6,
+                        controllers: _ctrls,
+                        focusNodes: _nodes,
+                        digits: state.digits,
+                        animationState: _anim,
+                        onChanged: _onChanged,
+                        onSuccessAnimationComplete: _onSuccessAnimationComplete,
+                        onAnimationPhaseChanged: (phase) {
+                          if (!mounted) return;
+                          if (_anim == phase) return;
+                          setState(() => _anim = phase);
+                        },
                       );
                     },
                   ),
-                  const SizedBox(height: 28),
-                  BlocBuilder<OtpVerifyCubit, OtpVerifyState>(
-                    builder: (context, state) {
-                      return AppButton(
-                        label: 'Verify Code',
-                        loading: state.loading,
-                        onPressed: state.loading
-                            ? null
-                            : () {
-                                KeyboardDismiss.hide(context);
-                                _presenter.verifyCode();
-                              },
-                      );
-                    },
-                  ),
-                  const SizedBox(height: 24),
-                  Center(
-                    child: BlocBuilder<OtpVerifyCubit, OtpVerifyState>(
-                      builder: (context, state) {
-                        if (state.canResend) {
-                          return GestureDetector(
-                            onTap: state.loading
-                                ? null
-                                : () {
-                                    KeyboardDismiss.hide(context);
-                                    _presenter.resendCode();
-                                  },
-                            child: Text(
-                              'Resend code',
-                              style: TextStyle(
-                                fontSize: 14,
-                                fontWeight: FontWeight.w600,
-                                color: state.loading
-                                    ? AppColors.gray400
-                                    : AppColors.primary,
-                              ),
-                            ),
-                          );
-                        }
-                        return Text(
-                          'Resend code in ${state.resendSeconds}s',
-                          style: const TextStyle(
+                  if (_anim == OtpAnimationState.verifying) ...[
+                    const SizedBox(height: 12),
+                    const Center(
+                      child: SizedBox(
+                        width: 18,
+                        height: 18,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      ),
+                    ),
+                  ],
+                  if (successPhase) ...[
+                    const SizedBox(height: 18),
+                    Center(
+                      child: AnimatedOpacity(
+                        opacity: _anim == OtpAnimationState.success ? 1 : 0,
+                        duration: const Duration(milliseconds: 350),
+                        child: Text(
+                          'Verified & Secured 🔒',
+                          style: TextStyle(
                             fontSize: 14,
-                            color: AppColors.gray500,
+                            fontWeight: FontWeight.w700,
+                            color: AppColors.success.withValues(alpha: 0.95),
                           ),
+                        ),
+                      ),
+                    ),
+                  ],
+                  if (!successPhase) ...[
+                    const SizedBox(height: 28),
+                    BlocBuilder<OtpVerifyCubit, OtpVerifyState>(
+                      builder: (context, state) {
+                        return AppButton(
+                          label: 'Verify Code',
+                          loading: state.loading ||
+                              _anim == OtpAnimationState.verifying,
+                          onPressed: state.loading ||
+                                  _anim == OtpAnimationState.verifying
+                              ? null
+                              : _verify,
                         );
                       },
                     ),
-                  ),
+                    const SizedBox(height: 24),
+                    Center(
+                      child: BlocBuilder<OtpVerifyCubit, OtpVerifyState>(
+                        builder: (context, state) {
+                          if (state.canResend) {
+                            return GestureDetector(
+                              onTap: state.loading ||
+                                      _anim == OtpAnimationState.verifying
+                                  ? null
+                                  : () {
+                                      KeyboardDismiss.hide(context);
+                                      _presenter.resendCode();
+                                    },
+                              child: Text(
+                                'Resend code',
+                                style: TextStyle(
+                                  fontSize: 14,
+                                  fontWeight: FontWeight.w600,
+                                  color: state.loading
+                                      ? AppColors.gray400
+                                      : AppColors.primary,
+                                ),
+                              ),
+                            );
+                          }
+                          return Text(
+                            'Resend code in ${state.resendSeconds}s',
+                            style: const TextStyle(
+                              fontSize: 14,
+                              color: AppColors.gray500,
+                            ),
+                          );
+                        },
+                      ),
+                    ),
+                  ],
                   const SizedBox(height: 32),
                 ],
               ),
@@ -286,6 +335,99 @@ class _OtpVerifyPageState extends State<OtpVerifyPage> implements OtpVerifyView 
           ),
         ),
       ),
+    );
+  }
+}
+
+class _VerificationTextContent extends StatelessWidget {
+  const _VerificationTextContent({
+    required this.success,
+    required this.email,
+  });
+
+  final bool success;
+  final String email;
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedSwitcher(
+      duration: const Duration(milliseconds: 380),
+      switchInCurve: Curves.easeOut,
+      switchOutCurve: Curves.easeIn,
+      transitionBuilder: (child, anim) {
+        return FadeTransition(
+          opacity: anim,
+          child: SlideTransition(
+            position: Tween<Offset>(
+              begin: const Offset(0, 0.08),
+              end: Offset.zero,
+            ).animate(anim),
+            child: child,
+          ),
+        );
+      },
+      child: success
+          ? const Column(
+              key: ValueKey('success-copy'),
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Verified successfully',
+                  style: TextStyle(
+                    fontSize: 28,
+                    fontWeight: FontWeight.w700,
+                    color: AppColors.success,
+                    letterSpacing: -0.4,
+                  ),
+                ),
+                SizedBox(height: 10),
+                Text(
+                  'Your email has been verified.',
+                  style: TextStyle(
+                    fontSize: 15,
+                    color: AppColors.gray500,
+                    height: 1.5,
+                  ),
+                ),
+              ],
+            )
+          : Column(
+              key: const ValueKey('input-copy'),
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'Check your email',
+                  style: TextStyle(
+                    fontSize: 28,
+                    fontWeight: FontWeight.w700,
+                    color: AppColors.gray900,
+                    letterSpacing: -0.4,
+                  ),
+                ),
+                const SizedBox(height: 10),
+                Text.rich(
+                  TextSpan(
+                    style: const TextStyle(
+                      fontSize: 15,
+                      color: AppColors.gray500,
+                      height: 1.5,
+                    ),
+                    children: [
+                      const TextSpan(
+                        text: 'We sent a 6-digit verification code to ',
+                      ),
+                      TextSpan(
+                        text: email.isEmpty ? 'your email' : email,
+                        style: const TextStyle(
+                          fontWeight: FontWeight.w700,
+                          color: AppColors.gray900,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
     );
   }
 }
@@ -307,7 +449,11 @@ class _AuthBackButton extends StatelessWidget {
           borderRadius: BorderRadius.circular(12),
           border: Border.all(color: AppColors.gray200),
         ),
-        child: const Icon(Icons.chevron_left_rounded, size: 22, color: AppColors.gray700),
+        child: const Icon(
+          Icons.chevron_left_rounded,
+          size: 22,
+          color: AppColors.gray700,
+        ),
       ),
     );
   }

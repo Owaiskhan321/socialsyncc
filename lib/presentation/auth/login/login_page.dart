@@ -11,6 +11,7 @@ import '../../../core/widgets/app_button.dart';
 import '../../../core/widgets/app_input.dart';
 import '../../../core/widgets/app_snackbar.dart';
 import '../../../core/widgets/social_logos.dart';
+import '../../../navigation/app_launch_transition.dart';
 import 'login_presenter.dart';
 
 class LoginPage extends StatefulWidget {
@@ -61,14 +62,14 @@ class _LoginPageState extends State<LoginPage> implements LoginView {
   void goForgotPassword() {
     if (!mounted) return;
     AppLogger.navigation('login', 'forgot-password');
-    context.push('/forgot-password');
+    context.pushFromSource('/forgot-password', borderRadius: 12);
   }
 
   @override
   void goRegister() {
     if (!mounted) return;
     AppLogger.navigation('login', 'register');
-    context.push('/register');
+    context.pushFromSource('/register', borderRadius: 12);
   }
 
   @override
@@ -134,17 +135,22 @@ class _LoginPageState extends State<LoginPage> implements LoginView {
                   const SizedBox(height: 12),
                   Align(
                     alignment: Alignment.centerRight,
-                    child: GestureDetector(
-                      onTap: () {
-                        KeyboardDismiss.hide(context);
-                        _presenter.forgotPassword();
-                      },
-                      child: const Text(
-                        'Forgot password?',
-                        style: TextStyle(
-                          fontSize: 13,
-                          fontWeight: FontWeight.w600,
-                          color: AppColors.primary,
+                    child: Builder(
+                      builder: (src) => GestureDetector(
+                        onTap: () {
+                          KeyboardDismiss.hide(context);
+                          src.pushFromSource(
+                            '/forgot-password',
+                            borderRadius: 8,
+                          );
+                        },
+                        child: const Text(
+                          'Forgot password?',
+                          style: TextStyle(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w600,
+                            color: AppColors.primary,
+                          ),
                         ),
                       ),
                     ),
@@ -219,24 +225,26 @@ class _LoginPageState extends State<LoginPage> implements LoginView {
                   ),
                   const SizedBox(height: 40),
                   Center(
-                    child: GestureDetector(
-                      onTap: () {
-                        KeyboardDismiss.hide(context);
-                        _presenter.goRegister();
-                      },
-                      child: const Text.rich(
-                        TextSpan(
-                          style: TextStyle(fontSize: 14, color: AppColors.gray500),
-                          children: [
-                            TextSpan(text: "Don't have an account? "),
-                            TextSpan(
-                              text: 'Create one',
-                              style: TextStyle(
-                                fontWeight: FontWeight.w600,
-                                color: AppColors.primary,
+                    child: Builder(
+                      builder: (src) => GestureDetector(
+                        onTap: () {
+                          KeyboardDismiss.hide(context);
+                          src.pushFromSource('/register', borderRadius: 10);
+                        },
+                        child: const Text.rich(
+                          TextSpan(
+                            style: TextStyle(fontSize: 14, color: AppColors.gray500),
+                            children: [
+                              TextSpan(text: "Don't have an account? "),
+                              TextSpan(
+                                text: 'Create one',
+                                style: TextStyle(
+                                  fontWeight: FontWeight.w600,
+                                  color: AppColors.primary,
+                                ),
                               ),
-                            ),
-                          ],
+                            ],
+                          ),
                         ),
                       ),
                     ),

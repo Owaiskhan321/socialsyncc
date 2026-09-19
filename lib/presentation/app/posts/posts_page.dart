@@ -2,12 +2,13 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
-import 'package:go_router/go_router.dart';
 
 import '../../../core/theme/app_colors.dart';
-import '../../../core/widgets/platform_icon.dart';
+import '../../../core/widgets/app_video_player.dart';
+import '../../../core/widgets/platform_status_icons.dart';
 import '../../../core/widgets/status_badge.dart';
 import '../../../data/models/models.dart';
+import '../../../navigation/app_launch_transition.dart';
 import 'posts_cubit.dart';
 
 class PostsPage extends StatelessWidget {
@@ -184,7 +185,10 @@ class _PostListCard extends StatelessWidget {
     return GestureDetector(
       onTap: post.id.isEmpty
           ? null
-          : () => context.push('/posts/${post.id}'),
+          : () => context.pushFromSource(
+                '/posts/${post.id}',
+                borderRadius: 16,
+              ),
       child: Container(
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
@@ -200,26 +204,69 @@ class _PostListCard extends StatelessWidget {
             children: [
               ClipRRect(
                 borderRadius: BorderRadius.circular(12),
-                child: post.thumbnail != null
-                    ? CachedNetworkImage(
-                        imageUrl: post.thumbnail!,
-                        width: 64,
-                        height: 64,
-                        fit: BoxFit.cover,
-                        placeholder: (_, __) => Container(width: 64, height: 64, color: AppColors.gray100),
-                        errorWidget: (_, __, ___) => Container(
-                          width: 64,
-                          height: 64,
-                          color: AppColors.gray100,
-                          child: const Icon(Icons.image_outlined, color: AppColors.gray400),
+                child: Stack(
+                  children: [
+                    post.thumbnail != null
+                        ? (post.mediaIsVideo
+                            ? const VideoMediaPlaceholder(
+                                width: 64,
+                                height: 64,
+                                borderRadius: 12,
+                              )
+                            : CachedNetworkImage(
+                                imageUrl: post.thumbnail!,
+                                width: 64,
+                                height: 64,
+                                fit: BoxFit.cover,
+                                placeholder: (_, __) => Container(
+                                  width: 64,
+                                  height: 64,
+                                  color: AppColors.gray100,
+                                ),
+                                errorWidget: (_, __, ___) => Container(
+                                  width: 64,
+                                  height: 64,
+                                  color: AppColors.gray100,
+                                  child: const Icon(
+                                    Icons.image_outlined,
+                                    color: AppColors.gray400,
+                                  ),
+                                ),
+                              ))
+                        : Container(
+                            width: 64,
+                            height: 64,
+                            color: AppColors.gray100,
+                            child: const Icon(
+                              Icons.image_outlined,
+                              color: AppColors.gray400,
+                            ),
+                          ),
+                    if (!post.mediaIsVideo && post.displayMediaUrls.length > 1)
+                      Positioned(
+                        right: 4,
+                        bottom: 4,
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 5,
+                            vertical: 2,
+                          ),
+                          decoration: BoxDecoration(
+                            color: Colors.black.withValues(alpha: 0.55),
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: Text(
+                            '${post.displayMediaUrls.length}',
+                            style: const TextStyle(
+                              fontSize: 10,
+                              fontWeight: FontWeight.w700,
+                              color: Colors.white,
+                            ),
+                          ),
                         ),
-                      )
-                    : Container(
-                        width: 64,
-                        height: 64,
-                        color: AppColors.gray100,
-                        child: const Icon(Icons.image_outlined, color: AppColors.gray400),
                       ),
+                  ],
+                ),
               ),
               const SizedBox(width: 12),
               Expanded(
@@ -258,21 +305,25 @@ class _PostListCard extends StatelessWidget {
           const SizedBox(height: 12),
           Row(
             children: [
-              ...post.platforms.map(
-                (id) => Padding(
-                  padding: const EdgeInsets.only(right: 6),
-                  child: PlatformIcon(id: id, size: 22),
-                ),
+              PlatformStatusIcons(
+                post: post,
+                iconSize: 22,
+                spacing: 6,
               ),
               const Spacer(),
               if (post.publishAt != null)
                 Row(
+                  mainAxisSize: MainAxisSize.min,
                   children: [
                     const Icon(Icons.schedule, size: 14, color: AppColors.gray400),
                     const SizedBox(width: 4),
                     Text(
                       post.publishAt!,
-                      style: const TextStyle(fontSize: 11, color: AppColors.gray400, fontWeight: FontWeight.w500),
+                      style: const TextStyle(
+                        fontSize: 11,
+                        color: AppColors.gray400,
+                        fontWeight: FontWeight.w500,
+                      ),
                     ),
                   ],
                 ),

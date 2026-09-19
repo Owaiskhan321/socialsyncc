@@ -51,6 +51,7 @@ class OtpVerifyState extends Equatable {
 
 abstract class OtpVerifyView implements MvpView {
   void onVerifySuccess(String message);
+  void onVerifyError(String message);
   void goResetPassword(String email, String otp);
 }
 
@@ -141,10 +142,10 @@ class OtpVerifyPresenter extends MvpPresenter<OtpVerifyState, OtpVerifyView> {
             : 'Email verified successfully. You can sign in now.',
       );
     } on ApiException catch (e) {
-      view?.showMessage(e.message);
+      view?.onVerifyError(e.message);
     } catch (e, st) {
       AppLogger.e('OTP verify failed', e, st);
-      view?.showMessage('Verification failed. Please try again.');
+      view?.onVerifyError('Verification failed. Please try again.');
     } finally {
       if (!cubit.isClosed) _c.setLoading(false);
     }
